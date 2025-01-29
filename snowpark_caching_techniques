@@ -1,0 +1,21 @@
+import snowflake.snowpark as snowpark
+from snowflake.snowpark.functions import col
+def main(session: snowpark.Session): 
+
+    ####Snowpark code for doing a demo on Caching######
+    df_sql=session.table("DEMO_CALL_CENTER")
+    df_sql.collect()
+    optread=df_sql.cache_result()
+    
+    df2_sql=session.sql("DELETE FROM DEMO_CALL_CENTER")
+    df2_sql.collect()
+
+    #How do we drop the cache in Snowflake
+    optread.drop_table()
+
+    #writing the data to the table from the cached dataframe.
+    optread.write.mode('append').saveAsTable('DEMO_CALL_CENTER_NEW')
+    
+    #return optread
+    #return df_sql
+    return True
