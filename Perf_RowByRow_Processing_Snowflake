@@ -1,0 +1,59 @@
+/*ROW BY ROW Processing & Its Caveats*/ --> Performance Optimizing Techniques.
+
+CREATE TABLE TBL_ORDERS AS SELECT * FROM SNOWFLAKE_SAMPLE_DATA.TPCH_SF10.ORDERS WHERE 1=2;
+CREATE TABLE TBL_ORDERS_VER1 AS SELECT * FROM SNOWFLAKE_SAMPLE_DATA.TPCH_SF10.ORDERS WHERE 1=2;
+TRUNCATE TABLE TBL_ORDERS;
+TRUNCATE TABLE TBL_ORDERS_VER1;
+SELECT COUNT(1) FROM SNOWFLAKE_SAMPLE_DATA.TPCH_SF10.ORDERS;
+
+
+--- 1st method --
+INSERT INTO TBL_ORDERS
+    SELECT * FROM 
+        SNOWFLAKE_SAMPLE_DATA.TPCH_SF10.ORDERS 
+    LIMIT 10000000;
+
+
+-- 2nd method --
+DECLARE
+iterator INTEGER;
+BEGIN
+  FOR iterator IN 1 TO 20 DO
+     INSERT INTO TBL_ORDERS_VER1
+     SELECT *
+     FROM SNOWFLAKE_SAMPLE_DATA.TPCH_SF10.ORDERS
+     LIMIT 1;
+  END FOR;
+END;
+
+
+
+SELECT 
+QUERY_ID,
+QUERY_TEXT,
+START_TIME,
+END_TIME,
+ROWS_PRODUCED,
+ROWS_INSERTED,
+--ROWS_UPDATED, 
+ROWS_WRITTEN_TO_RESULT
+--ROWS_DELETED
+FROM table(information_schema.query_history()) ORDER BY START_TIME DESC;
+
+
+select *
+from table(information_schema.query_history())
+order by start_time desc;
+
+
+
+
+/*
+Summary:
+1. Try avoiding ROW BY ROW processing of the data, as this would take more time and impact the performance heavily. Instead to a batch processing.
+2. To know the metrics on ROW By ROW, please look for the columns like ROWS_INSERTED, ROWS_WRITTEN_TO_RESULT which would give a value as "1".
+3. The batch processing always would give a result against the total number of records processed.
+4. There is also a column ROWS_PRODUCED,The value in the ROWS_PRODUCED column doesn’t always reflect the logical number of rows affected by a query. For example, the 
+   value in the ROWS_PRODUCED column might include rows that were deleted due to rewriting of micro-partitions and could be larger than the actual number of rows 
+   affected. Snowflake recommends using the ROWS_INSERTED, ROWS_UPDATED, ROWS_WRITTEN_TO RESULTS, or ROWS_DELETED columns instead
+*/
