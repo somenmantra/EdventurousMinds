@@ -1,0 +1,31 @@
+/*Concurrency Tests for a Warehouse
+Download the Snowsql CLI and then give the account_id and username and use the below command.
+AccountID can be got by executing the below command i.e., SELECT CURRENT_ACCOUNT(); 
+snowsql -a ARB95675 -u somen2025*/
+
+--Create a warehouse with X-Small --
+CREATE OR REPLACE WAREHOUSE DEMO_WH_202501 WITH WAREHOUSE_SIZE='X-SMALL';
+
+--Checking the warehouse level parameters--
+SHOW PARAMETERS IN WAREHOUSE DEMO_WH_202501;
+
+
+-- Set the warehouse --
+USE WAREHOUSE DEMO_WH_202501;
+
+--DISABLE THE CACHE(RESULT) --
+ALTER SESSION SET USE_CACHED_RESULT=FALSE;
+
+
+-- RUN 1(with default 8 threads) -- 
+CREATE OR REPLACE TABLE demo_db.demo_schema.orders_001 AS SELECT * FROM SNOWFLAKE_SAMPLE_DATA.TPCH_SF1000.ORDERS where o_orderdate<='1992-01-10';>
+CREATE OR REPLACE TABLE demo_db.demo_schema.orders_002 AS SELECT * FROM SNOWFLAKE_SAMPLE_DATA.TPCH_SF1000.ORDERS where o_orderdate<='1992-01-10';>
+CREATE OR REPLACE TABLE demo_db.demo_schema.orders_003 AS SELECT * FROM SNOWFLAKE_SAMPLE_DATA.TPCH_SF1000.ORDERS where o_orderdate<='1992-01-10';>
+CREATE OR REPLACE TABLE demo_db.demo_schema.orders_004 AS SELECT * FROM SNOWFLAKE_SAMPLE_DATA.TPCH_SF1000.ORDERS where o_orderdate<='1992-01-10';>
+CREATE OR REPLACE TABLE demo_db.demo_schema.orders_005 AS SELECT * FROM SNOWFLAKE_SAMPLE_DATA.TPCH_SF1000.ORDERS where o_orderdate<='1992-01-10';>
+CREATE OR REPLACE TABLE demo_db.demo_schema.orders_006 AS SELECT * FROM SNOWFLAKE_SAMPLE_DATA.TPCH_SF1000.ORDERS where o_orderdate<='1992-01-10';>
+CREATE OR REPLACE TABLE demo_db.demo_schema.orders_007 AS SELECT * FROM SNOWFLAKE_SAMPLE_DATA.TPCH_SF1000.ORDERS where o_orderdate<='1992-01-10';>
+CREATE OR REPLACE TABLE demo_db.demo_schema.orders_008 AS SELECT * FROM SNOWFLAKE_SAMPLE_DATA.TPCH_SF1000.ORDERS where o_orderdate<='1992-01-10';>
+
+
+/*all these things to be done via SnowSQL CLI */
