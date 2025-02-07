@@ -1,0 +1,53 @@
+--This is to set the session variable.
+SET table_name = 'EMPLOYEE'; 
+--This is the main call of the function.
+SELECT * FROM 
+TABLE(TO_QUERY('SELECT * FROM IDENTIFIER($table_name)'));
+
+
+
+--This is to set the session variable.
+SET table_name = 'EMPLOYEE'; 
+
+--This is the main call of the function.
+SELECT DEPARTMENT_NUMBER 
+FROM 
+TABLE(TO_QUERY('SELECT * FROM IDENTIFIER($table_name)'));
+
+
+
+--This is to set the session variable.
+SET table_name = 'EMPLOYEE'; 
+
+--This is the main call of the function.
+--an argument can also be passed.
+SELECT * FROM TABLE(
+  TO_QUERY(
+    'SELECT * FROM IDENTIFIER($table_name)
+    WHERE DEPARTMENT_NUMBER = TO_NUMBER(:dno)', dno => '101'
+    )
+  );
+  
+
+
+CREATE OR REPLACE PROCEDURE get_count_of_objects(query VARCHAR)
+RETURNS TABLE ()
+LANGUAGE SQL
+AS
+DECLARE
+  res RESULTSET DEFAULT (SELECT COUNT(*) FROM TABLE(TO_QUERY(:query)));
+BEGIN
+  RETURN TABLE(res);
+END;
+
+
+CALL get_count_of_objects('SELECT * FROM ORDERS_001');          ----6234069 recs
+
+CALL get_count_of_objects('SELECT * FROM EMPLOYEE');            ----77600 recs
+
+CALL get_count_of_objects('SELECT * FROM DEPARTMENT');          ----4000 recs
+
+CALL get_count_of_objects('SELECT * FROM DISTRICT_LOCATION');   ----15400 recs
+
+
+
