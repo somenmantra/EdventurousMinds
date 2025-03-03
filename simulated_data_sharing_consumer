@@ -1,0 +1,120 @@
+
+
+//PROVIDER ACCOUNT SCRIPTS //
+
+// THE IMPORTANCE OF SHARE SIMULATION IN SNOWFLAKE VIA "SIMULATED_DATA_SHARING_CONSUMER"//
+
+SELECT CURRENT_ACCOUNT();
+Provider Account: PAB76623 
+Consumer Account: HCB85797
+
+//New scripts to be tested //
+
+CREATE OR REPLACE TABLE Product_Fact (
+    ProductID INT PRIMARY KEY,
+    ProductName VARCHAR(100),
+    Category VARCHAR(50),     -- This is how we differentiate the category of information to be shared.
+    Price DECIMAL(10,2),
+    CostPrice DECIMAL(10,2),  -- Confidential Pricing Information
+    ConfidentialNotes TEXT,
+    Account_SNF VARCHAR(50)   -- Sensitive Business Information
+);
+
+INSERT INTO Product_Fact (ProductID, ProductName, Category, Price, CostPrice, ConfidentialNotes,Account_SNF) VALUES
+(101, 'Advanced Painkiller', 'Pharmaceutical', 299.99, 120.00, 'Contains patented formula with restricted ingredients.',CURRENT_ACCOUNT()),
+(102, 'AI Smartwatch X1', 'Electronics', 15999.99, 10500.00, 'Prototype version tested in limited regions.', 'HCB85797'),
+(103, 'Luxury Face Serum', 'Cosmetics', 4999.50, 2500.00, 'High-end exclusive formula, celebrity-endorsed.',CURRENT_ACCOUNT()),
+(104, 'Organic Herbal Tea', 'Beverages', 799.99, 400.00, 'Sourced from rare organic farms, supplier non-disclosed.',CURRENT_ACCOUNT()),
+(105, 'Noise Cancelling Headphones', 'Electronics', 17999.00, 9500.00, 'Confidential chipset from private manufacturer.','HCB85797'),
+(106, 'Smart Home Security System', 'Electronics', 45999.99, 32000.00, 'Special security algorithms used, not open-source.','HCB85797'),
+(107, 'High-Protein Energy Bar', 'Health & Wellness', 299.00, 120.00, 'New protein blend under FDA review.',CURRENT_ACCOUNT()),
+(108, 'Luxury Leather Wallet', 'Electronics', 3999.99, 1800.00, 'Made from premium quality materials, supplier undisclosed.','HCB85797'),
+(109, 'Gaming Laptop Xtreme', 'Computers', 129999.99, 98000.00, 'Uses proprietary cooling technology, patents pending.',CURRENT_ACCOUNT()),
+(110, 'Electric Mountain Bike', 'Automobile', 159999.99, 120000.00, 'Battery technology based on upcoming EV trends.',CURRENT_ACCOUNT());
+
+
+create or replace table md_sharing_access (
+  ProductID INT,
+  snowflake_account string
+);
+
+INSERT INTO md_sharing_access (ProductID, snowflake_account ) VALUES 
+(102, 'HCB85797'),
+(105, 'HCB85797'),
+(106, 'HCB85797'),
+(108, 'HCB85797'),
+(101, 'PAB76623'),
+(103, 'PAB76623'),
+(104, 'PAB76623'),
+(107, 'PAB76623'),
+(109, 'PAB76623'),
+(110, 'PAB76623');
+
+SELECT * FROM Product_Fact where category='Electronics';
+
+
+
+CREATE OR REPLACE SECURE view SV_PRODUCT_DTLS as
+ SELECT 
+    pf.ProductID, 
+    ProductName, 
+    Category, 
+    Price,
+    CostPrice,
+    ConfidentialNotes
+ FROM Product_Fact pf
+ JOIN md_sharing_access sa ON pf.ProductID = sa.ProductID
+ AND sa.snowflake_account = current_account();
+
+SELECT * FROM SV_PRODUCT_DTLS;
+
+
+//This is the key command to be used.
+ALTER SESSION SET simulated_data_sharing_consumer=HCB85797;
+SELECT * FROM SV_PRODUCT_DTLS;
+
+
+ALTER SESSION UNSET simulated_data_sharing_consumer;
+SELECT * FROM SV_PRODUCT_DTLS;
+
+
+
+//Create a share & then associate this object with this share.
+
+//STEP 1//
+USE ROLE ACCOUNTADMIN;
+CREATE OR REPLACE SHARE sensitive_data_shared Comment = 'Example of using Secure Data Sharing with secure views';
+SHOW SHARES;
+
+//STEP 2//
+GRANT USAGE ON DATABASE DEMO_DB TO SHARE sensitive_data_shared;
+GRANT USAGE ON SCHEMA DEMO_DB.DEMO_SCHEMA TO SHARE sensitive_data_shared;
+GRANT SELECT ON DEMO_DB.DEMO_SCHEMA.SV_ORDER_DTLS TO SHARE sensitive_data_shared;
+
+//STEP 3//
+ALTER SHARE sensitive_data_shared SET ACCOUNTS = HCB85797;
+
+ 
+
+
+
+
+//CONSUMER ACCOUNT SCRIPTS //
+SELECT CURRENT_ACCOUNT();
+
+-- Set-Up scripts to consume the share that is coming from provider account.
+USE ROLE ACCOUNTADMIN;
+SHOW SHARES;
+
+DESC SHARE PAB76623.SENSITIVE_DATA_SHARED;
+DESC SHARE XWQNGHN.VZB44222.SENSITIVE_DATA_SHARED;
+
+CREATE OR REPLACE DATABASE MYDEMO_DB FROM SHARE PAB76623.SENSITIVE_DATA_SHARED;
+
+-- Only the selected data can be seen.
+SELECT * FROM MYDEMO_DB.DEMO_SCHEMA.SV_ORDER_DTLS;
+
+
+
+
+
