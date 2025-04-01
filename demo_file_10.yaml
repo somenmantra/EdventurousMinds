@@ -1,0 +1,204 @@
+# Semantic model constructed by @Venks.Mantha
+name: snow_tpch
+description: >
+  Order data from the TPCH dataset.
+tables:
+  - name: customers
+    description: >
+      The customers table contains details about individual customers, including their unique customer identifier, name, address, account balance, and market segment. 
+      It is used to analyze customer demographics, purchasing behavior, and segmentation.  
+      Join this table with orders and lineitem tables to track sales performance and customer order history.
+    base_table:
+      database: DEMO_DB
+      schema: DEMO_SCHEMA
+      table: CUSTOMER
+    dimensions:
+      - name: customer_key
+        description: Unique identifier for each customer.
+        expr: C_CUSTKEY
+        data_type: NUMBER
+        unique: true
+        sample_values:
+          - '1'
+          - '60035'
+          - '149891'
+      - name: nation_key
+        description: Foreign key from the nations table
+        expr: C_NATIONKEY
+        data_type: NUMBER
+        sample_values:
+          - '14'
+          - '10'
+      - name: customer_name
+        synonyms:
+          - 'customer_name'
+          - 'customer'
+        description: Name of the customer.
+        expr: C_NAME
+        data_type: TEXT
+        sample_values:
+          - Customer#000060003
+          - Customer#000060007
+      - name: customer_market_segment
+        synonyms:
+          - 'market segment'
+        description: The market segment for this customer
+        expr: C_MKTSEGMENT
+        data_type: TEXT
+        sample_values:
+          - AUTOMOBILE
+          - BUILDING
+          - MACHINERY
+          - HOUSEHOLD
+          - FURNITURE
+
+    measures:
+      - name: customer_account_balance
+        description: Customer account balance
+        expr: C_ACCTBAL
+        data_type: NUMBER
+        sample_values:
+          - '711.56'
+          - '121.65'
+
+    filters:
+      - name: automobile_market_segment
+        synonyms:
+          - 'Automobile Segment'
+          - 'Automobile Customers'
+        description: 'A filter to retrieve customers in the AUTOMOBILE market segment.'
+        expr: customer_market_segment = 'AUTOMOBILE'
+
+      - name: top_10_customers_by_higest_account_balance
+        synonyms:
+          - 'Top 10 highest customer balance'
+        description: 'A filter to retrieve the top 10 customers with the highest account balance.'
+        expr: >
+          customer_key IN (
+            SELECT customer_key 
+            FROM __customers 
+            ORDER BY customer_account_balance DESC 
+            LIMIT 10
+          )
+
+    primary_key:
+      columns:
+        - customer_key
+
+ 
+  - name: orders
+    description: >
+      The orders table contains information about customer orders, including the order date, priority, and status. 
+
+    base_table:
+      database: DEMO_DB
+      schema: DEMO_SCHEMA
+      table: ORDERS
+
+    dimensions:
+      - name: order_key
+        description: Unique identifier for each order
+        expr: O_ORDERKEY
+        data_type: NUMBER
+        unique: true
+        sample_values:
+          - '1800006'
+          - '1800864'
+      - name: customer_key
+        description: Foreign key from Customer Table
+        expr: O_CUSTKEY
+        data_type: NUMBER
+        sample_values:
+          - '44485'
+          - '129200'
+      - name: order_status
+        description: Order Status
+        expr: O_ORDERSTATUS
+        data_type: TEXT
+        sample_values:
+          - P
+          - O
+          - F
+      - name: order_priority
+        description: Priority level assigned to an order
+        expr: O_ORDERPRIORITY
+        data_type: TEXT
+        sample_values:
+          - 1-URGENT
+          - 2-HIGH
+          - 3-MEDIUM
+          - 4-NOT SPECIFIED
+          - 5-LOW
+
+    time_dimensions:
+      - name: order_date
+        description: Date of Order
+        expr: O_ORDERDATE
+        data_type: DATE
+        sample_values:
+          - '1995-12-27'
+          - '1995-09-22'
+
+    measures:
+      - name: order_gross_total
+        synonyms:
+          - 'order total price'
+          - 'order total with tax'
+        description: Total Order Value after discount and including taxes. This is the sum of gross_revenue for all line items in the order.
+        expr: O_TOTALPRICE
+        data_type: NUMBER
+        default_aggregation: sum
+        sample_values:
+          - '294964.49'
+          - '225465.88'
+      - name: order_ship_priority
+        synonyms:
+          - 'shipping priority'
+        description: Shipping Priority of the Order
+        expr: O_SHIPPRIORITY
+        data_type: NUMBER
+        sample_values:
+          - '0'
+      - name: total_orders
+        description: The total number of orders.
+        expr: COUNT(*)
+        data_type: NUMBER
+
+    primary_key:
+      columns:
+        - order_key
+
+    filters:
+      - name: 'Yesterday'
+        synonyms:
+          - 'Prior Day'
+          - 'Day before'
+          - 'Previous Day'
+        description: 'A filter to restrict data to only yesterday.'
+        expr: order_date = '1998-08-01'
+      - name: 'YTD'
+        synonyms:
+          - 'This Year'
+          - 'Current Year'
+          - 'Year to Date'
+          - 'TY'
+        description: 'A filter to restrict data to only current fiscal year.'
+        expr: DATE_PART('YEAR', order_date) = '1998'
+        
+custom_instructions: "Ensure that all numeric columns are rounded to 1 decimal points in the output."
+relationships:
+
+  - name: orders_to_customers
+    left_table: orders
+    right_table: customers
+    relationship_columns:
+      - left_column: customer_key
+        right_column: customer_key
+    join_type: left_outer
+    relationship_type: many_to_one
+
+verified_queries:
+  - name: order_customer_demo_vqr
+    question: How many customers are there with marketing segment being HOUSEHOLD ?
+    use_as_onboarding_question: true
+    sql: SELECT COUNT(customer_key) FROM customers WHERE customer_market_segment='HOUSEHOLD' 
