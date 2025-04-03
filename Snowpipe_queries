@@ -1,0 +1,32 @@
+LIST @ext_stage_pipe_demo;
+
+//// NOW WE ARE ALL SET TO START CREATING THE SNOWPIPE /////
+
+CREATE OR REPLACE PIPE DEMO_SNOWPIPE_001
+AUTO_INGEST = TRUE
+AS COPY INTO DEMO_CUSTOMER
+FROM @ext_stage_pipe_demo
+FILE_FORMAT = demo_bbsrdai_csv_format;
+
+-- This is to describe the details about the pipe(configuration)
+DESCRIBE PIPE DEMO_SNOWPIPE_001;   -- The output of this needs to be put in AWS-S3 settings.
+
+-- This is for showing the status of the file:
+SELECT SYSTEM$PIPE_STATUS('DEMO_SNOWPIPE_001');
+
+-- Selecting the counts.
+SELECT COUNT(1) from DEMO_CUSTOMER;     -- 150410
+
+
+-- Snowpipes governance:
+ALTER PIPE DEMO_SNOWPIPE_001 SET PIPE_EXECUTION_PAUSED = TRUE; -- By default when we create the Snowpipe it would start polling.
+ALTER PIPE DEMO_SNOWPIPE_001 SET PIPE_EXECUTION_PAUSED = FALSE;
+
+select *
+from table(information_schema.copy_history(TABLE_NAME=>'DEMO_CUSTOMER', START_TIME=> DATEADD(hours, -24, CURRENT_TIMESTAMP())));
+
+select * 
+from SNOWFLAKE.ACCOUNT_USAGE.COPY_HISTORY;
+
+
+
