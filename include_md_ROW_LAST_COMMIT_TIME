@@ -1,0 +1,66 @@
+create or replace TABLE DEMO_DB_BBSRDAI.DEMO_SCHEMA_BBSRDAI.DEMO_CUSTOMER (
+	C_CUSTKEY NUMBER(38,0),
+	C_NAME VARCHAR(25),
+	C_ADDRESS VARCHAR(40),
+	C_NATIONKEY NUMBER(38,0),
+	C_PHONE VARCHAR(15),
+	C_ACCTBAL NUMBER(12,2),
+	C_MKTSEGMENT VARCHAR(10),
+	C_COMMENT VARCHAR(117),
+    file_name VARCHAR,
+    Load_last_modified_time timestamp_ntz,
+    Load_scan_time timestamp_ntz
+);
+
+-- This is new and have to be set-up to capture the last load timestamps.
+ALTER TABLE DEMO_CUSTOMER SET ALLOW_ROW_TIMESTAMP = TRUE;
+
+
+create or replace file format demo_bbsrdai_csv_format
+type = csv field_delimiter = ','
+field_optionally_enclosed_by = '"'
+null_if = ('NULL', 'null') 
+empty_field_as_null = true
+PARSE_HEADER=TRUE
+error_on_column_count_mismatch=false;
+
+
+create or replace stage ext_stage_pipe_demo url="s3://mydemobbsrdaistorage/" 
+STORAGE_INTEGRATION=s3_storage_int_dai_pipe
+file_format = demo_bbsrdai_csv_format;
+
+LIST @ext_stage_pipe_demo;
+
+//// NOW WE ARE ALL SET TO START CREATING THE SNOWPIPE /////
+-- This is a command where we include INCLUDE_METADATA in COPY INTO constructs.
+CREATE OR REPLACE PIPE DEMO_SNOWPIPE_001
+AUTO_INGEST = TRUE
+AS COPY INTO DEMO_CUSTOMER FROM @ext_stage_pipe_demo
+FILE_FORMAT = (FORMAT_NAME = 'demo_bbsrdai_csv_format')
+MATCH_BY_COLUMN_NAME = CASE_INSENSITIVE
+INCLUDE_METADATA = (
+file_name = METADATA$FILENAME,
+Load_last_modified_time=METADATA$FILE_LAST_MODIFIED,
+Load_scan_time = METADATA$START_SCAN_TIME
+);
+
+SELECT COUNT(1) from DEMO_CUSTOMER;
+
+SELECT *, METADATA$ROW_LAST_COMMIT_TIME AS ROW_TIMESTAMP FROM DEMO_CUSTOMER WHERE ROW_TIMESTAMP IS NOT NULL;
+
+SELECT CURRENT_TIMESTAMP();
+
+SELECT * FROM DEMO_CUSTOMER;
+
+-- The command to check the different load timestamp values.
+SELECT FILE_NAME, LOAD_LAST_MODIFIED_TIME, LOAD_SCAN_TIME, METADATA$ROW_LAST_COMMIT_TIME AS ROW_TIMESTAMP
+FROM DEMO_CUSTOMER GROUP BY ALL;
+
+
+select *
+from table(information_schema.copy_history(TABLE_NAME=>'DEMO_CUSTOMER', START_TIME=> DATEADD(hours, -24, CURRENT_TIMESTAMP())));
+
+SELECT SYSTEM$PIPE_STATUS('DEMO_SNOWPIPE_001');
+
+
+
