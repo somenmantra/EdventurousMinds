@@ -1,0 +1,47 @@
+---The session level parameter --
+SHOW PARAMETERS;
+SHOW PARAMETERS LIKE '%DEFAULT%'
+
+
+CREATE OR REPLACE TABLE test_null_ordering (
+    id INT,
+    name STRING
+);
+
+
+INSERT INTO test_null_ordering (id, name) VALUES
+(1, 'Alice'),
+(2, NULL),
+(3, 'Charlie'),
+(4, NULL),
+(5, 'Bob');
+
+
+SELECT * FROM test_null_ordering ORDER BY NAME;
+
+SELECT * FROM test_null_ordering ORDER BY NAME ASC;
+
+SELECT * FROM test_null_ordering ORDER BY NAME DESC;
+
+
+
+-- Special Case --
+SELECT * FROM test_null_ordering ORDER BY NAME NULLS FIRST;
+SELECT * FROM test_null_ordering ORDER BY NAME NULLS LAST;
+
+
+
+-- Now let us change this parameter --
+ALTER SESSION SET DEFAULT_NULL_ORDERING=LAST/FIRST;
+
+ALTER SESSION SET DEFAULT_NULL_ORDERING=FIRST;
+
+ALTER SESSION SET DEFAULT_NULL_ORDERING=LAST;
+
+
+
+
+-- Some of the use cases --
+Use Case 1 : If null names show up at the top unexpectedly, it disrupts readability.
+Use Case 2 : Setting up this at a user/session-level DEFAULT_NULL_ORDERING makes your sorting logic consistent across queries, especially in ETL pipelines or BI reports.
+
