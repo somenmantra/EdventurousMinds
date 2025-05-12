@@ -1,0 +1,26 @@
+
+
+--Creating an internal stage.
+CREATE OR REPLACE STAGE NEW_INTSTG_FORFILE 
+	DIRECTORY = ( ENABLE = true ) 
+	COMMENT = 'dir table';
+
+    
+--The o/p1
+SELECT * FROM DIRECTORY( @NEW_INTSTG_FORFILE );
+
+--The o/p2
+SELECT TO_FILE(file_url) FROM DIRECTORY(@NEW_INTSTG_FORFILE);
+
+
+--Creating the table.
+CREATE OR REPLACE TABLE 
+new_demo_unstruct_table(unstruct_col FILE);
+
+--Inserting the data to the table.
+INSERT INTO new_demo_unstruct_table
+    SELECT TO_FILE(file_url) FROM DIRECTORY(@NEW_INTSTG_FORFILE);
+
+--Selecting the data from the table.
+SELECT * FROM new_demo_unstruct_table;
+
