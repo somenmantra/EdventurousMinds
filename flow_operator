@@ -1,0 +1,49 @@
+/* FLOW operator OR Chaining of SQLs.
+    "->>"
+    Making the SQL workflows intuitive.
+    
+*/
+
+-- The method prior to the pipe operator launch --
+SHOW WAREHOUSES;
+SELECT  "name", "state", "type", "size" FROM TABLE(RESULT_SCAN(LAST_QUERY_ID())) WHERE "size"='Small';
+
+
+
+
+
+/* THE FIST USE CASE */
+SHOW WAREHOUSES
+->> SELECT "name", "state", "type", "size" FROM $1;
+
+SHOW WAREHOUSES
+->> SELECT * FROM $1 WHERE "size"='Small';
+
+
+
+
+/* THE SECOND USE CASE */
+
+SELECT * FROM ORDERS_001
+->> SELECT * FROM $1 WHERE O_ORDERSTATUS='F' LIMIT 10
+->> SELECT O_ORDERSTATUS, SUM(O_TOTALPRICE) FROM $2 GROUP BY ALL; 
+
+
+
+-- The CTE version is given as below --
+WITH raw_orders AS (
+    SELECT * FROM ORDERS_001
+),
+filtered_orders AS (
+    SELECT * FROM raw_orders
+    WHERE O_ORDERSTATUS = 'F'
+    LIMIT 10
+),
+aggregated_orders AS (
+    SELECT O_ORDERSTATUS, SUM(O_TOTALPRICE) AS total_price
+    FROM filtered_orders
+    GROUP BY O_ORDERSTATUS
+)
+SELECT * FROM aggregated_orders;
+
+
