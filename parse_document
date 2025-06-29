@@ -1,0 +1,93 @@
+//Cortex PARSE DOCUMENT function in Snowflake //
+
+
+LIST @DEMO_DB.DEMO_SCHEMA.DEMO_FORPARSEDOC_STAGE;
+
+SELECT
+  SNOWFLAKE.CORTEX.PARSE_DOCUMENT(
+    @DEMO_DB.DEMO_SCHEMA.DEMO_FORPARSEDOC_STAGE,
+    'The_Ultimate_Downhill_Bike.pdf',
+    {'mode': 'OCR'}
+  ) AS OCRMODE;
+
+
+
+
+SELECT 
+    RELATIVE_PATH,
+    SIZE,
+    FILE_URL,
+    build_scoped_file_url(@DEMO_FORPARSEDOC_STAGE, relative_path) as scoped_file_url,
+    TO_VARCHAR (
+        SNOWFLAKE.CORTEX.PARSE_DOCUMENT (
+            '@DEMO_FORPARSEDOC_STAGE',
+            RELATIVE_PATH,
+            {'mode': 'OCR'} ):content
+        ) AS EXTRACTED_LAYOUT 
+FROM 
+    DIRECTORY('@DEMO_FORPARSEDOC_STAGE');
+
+
+
+
+CREATE or replace TEMPORARY table RAW_TEXT AS
+SELECT 
+    RELATIVE_PATH,
+    SIZE,
+    FILE_URL,
+    build_scoped_file_url(@DEMO_FORPARSEDOC_STAGE, relative_path) as scoped_file_url,
+    TO_VARCHAR (
+        SNOWFLAKE.CORTEX.PARSE_DOCUMENT (
+            '@DEMO_FORPARSEDOC_STAGE',
+            RELATIVE_PATH,
+            {'mode': 'OCR'} ):content
+        ) AS EXTRACTED_LAYOUT 
+FROM 
+    DIRECTORY('@DEMO_FORPARSEDOC_STAGE');
+
+
+SELECT * FROM RAW_TEXT;
+
+
+
+
+--
+
+create or replace TABLE DOCS_CHUNKS_TABLE ( 
+    RELATIVE_PATH VARCHAR(16777216), -- Relative path to the PDF file
+    SIZE NUMBER(38,0), -- Size of the PDF
+    FILE_URL VARCHAR(16777216), -- URL for the PDF
+    SCOPED_FILE_URL VARCHAR(16777216), -- Scoped url (you can choose which one to keep depending on your use case)
+    CHUNK VARCHAR(16777216), -- Piece of text
+    CHUNK_INDEX INTEGER, -- Index for the text
+    CATEGORY VARCHAR(16777216) -- Will hold the document category to enable filtering
+);
+
+
+
+insert into docs_chunks_table (relative_path, size, file_url,
+                            scoped_file_url, chunk, chunk_index)
+
+    select relative_path, 
+            size,
+            file_url, 
+            scoped_file_url,
+            c.value::TEXT as chunk,
+            c.INDEX::INTEGER as chunk_index
+            
+    from 
+        raw_text,
+        LATERAL FLATTEN( input => SNOWFLAKE.CORTEX.SPLIT_TEXT_RECURSIVE_CHARACTER (
+              EXTRACTED_LAYOUT,
+              'markdown',
+              500,
+              10,
+              ['\n\n', '\n', ' ', '']
+           )) c;
+
+           
+
+Text into chunks of 1512 characters each with an overlap of 256 characters.
+
+
+Change it to 500 & 10 and then demonstrate it with example.
