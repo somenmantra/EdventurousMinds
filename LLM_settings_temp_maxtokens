@@ -1,0 +1,23 @@
+SELECT CURRENT_USER();
+SELECT SNOWFLAKE.CORTEX.COMPLETE('llama3-70b', 'Explain cloud computing to a business executive');
+
+//// The LLM settings ///
+
+SELECT SNOWFLAKE.CORTEX.COMPLETE(
+    'llama3-70b',
+    [
+        {
+            'role': 'user',
+            'content': 'Explain cloud computing to a business executive'
+        }
+    ],
+    {
+        'temperature'   : 0.1,
+        'max_tokens'    : 500
+    }
+);
+
+DEFAULT:
+max_tokens --> Default: 4096 Maximum allowed value: 8192
+temperature --> Default: 0.
+
