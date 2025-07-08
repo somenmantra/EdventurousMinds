@@ -1,0 +1,38 @@
+SELECT CURRENT_USER();
+
+--Data set-up:
+create table lineitem001 as select * from SNOWFLAKE_SAMPLE_DATA.TPCH_SF1000.LINEITEM;
+create table orders_002 as select * from SNOWFLAKE_SAMPLE_DATA.TPCH_SF100.ORDERS;
+create table customer_001 as select * from SNOWFLAKE_SAMPLE_DATA.TPCH_SF100.CUSTOMER;
+
+
+-- Pattern 1:
+SELECT ord.O_ORDERDATE, cst.C_ADDRESS
+FROM 
+orders_002 ord CROSS JOIN customer_001 cst
+ORDER BY 1,2;
+
+-- Pattern 2:
+SELECT * FROM DEMO_DB.DEMO_SCHEMA.ORDERS_002
+WHERE O_ORDERKEY IS NOT NULL;
+
+
+--Validations:
+SELECT * FROM SNOWFLAKE.ACCOUNT_USAGE.QUERY_INSIGHTS;
+
+
+-- Sample output:
+2025-07-06 21:45:16.568 -0700	2025-07-06 21:46:47.016 -0700	90448	01bd859d-0205-e6c8-000b-be4f000da3ea	1fadb0a37c047255343b694b2b9942f5	1fadb0a37c047255343b694b2b9942f5	7	COMPUTE_WH	38fb8f8b-abd7-45ad-ab76-31a0ead08f43	QUERY_INSIGHT_INAPPLICABLE_FILTER_ON_TABLE_SCAN	{
+  "message": "A SELECT statement in this query has a WHERE clause that has no effect, which results in scanning a large amount of data from table ORDERS_002.",
+  "provided_filters": "ORDERS_002.O_ORDERKEY IS NOT NULL",
+  "row_count": 1.500000000000000e+08,
+  "table": "ORDERS_002"
+}	[
+  "Adding another WHERE condition or making this condition more selective could speed up this query by reducing the amount of data that it reads. "
+]	TRUE	TABLE_SCAN
+2025-07-06 08:05:16.549 -0700	2025-07-06 09:11:22.349 -0700	3965800	01bd8269-0305-e536-000b-be4f000d6186	71c62755d7c3bd26d1d07b3b7dfdf8a1	71c62755d7c3bd26d1d07b3b7dfdf8a1	16	SNOWFLAKE_INTELLIGENCE_WH	6e57217b-9c1b-454c-a726-eea0d7ef8683	QUERY_INSIGHT_JOIN_WITH_NO_JOIN_CONDITION	{
+  "join_id": 2,
+  "message": "A JOIN in this query has no join condition (at node [2]), which produces many more rows than the total number of rows that went in."
+}	[
+  "Adding at least one condition to define the relationship between columns in the joined data sets could speed up this query by reducing the number of rows that it produces."
+]	TRUE	JOIN
