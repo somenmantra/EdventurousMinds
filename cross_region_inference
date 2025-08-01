@@ -1,0 +1,26 @@
+SELECT CURRENT_REGION() AS REGION, 
+SNOWFLAKE.CORTEX.COMPLETE('snowflake-arctic', 'Write a Python function to check if a number is prime?');
+
+SHOW PARAMETERS IN ACCOUNT;
+
+-- Query to check the cross region values --
+SHOW PARAMETERS IN ACCOUNT
+->> SELECT * FROM $1 WHERE "key"='CORTEX_ENABLED_CROSS_REGION';
+
+
+--To know which all are the models that are available for this account.
+CALL SNOWFLAKE.MODELS.CORTEX_BASE_MODELS_REFRESH();
+
+SHOW MODELS IN SNOWFLAKE.MODELS;
+
+
+--Option 1(allow any of the Snowflake regions that support cross-region inference requests to process your requests) --
+ALTER ACCOUNT SET CORTEX_ENABLED_CROSS_REGION = 'ANY_REGION';
+
+
+--Option 2(This is for the default region) --
+ALTER ACCOUNT SET CORTEX_ENABLED_CROSS_REGION = 'DISABLED';
+
+
+--Option 3(allow for AZURE_US regions) --
+ALTER ACCOUNT SET CORTEX_ENABLED_CROSS_REGION = 'AZURE_US';
