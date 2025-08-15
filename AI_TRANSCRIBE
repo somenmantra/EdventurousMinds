@@ -1,0 +1,102 @@
+//To transcribe the audio file
+SELECT AI_TRANSCRIBE(TO_FILE(
+    '@INT_STG_FORDEMO_01', 'Sample_Audio_file.mp3'));
+
+
+//To split each word against the timestamp values.
+SELECT AI_TRANSCRIBE(TO_FILE('@INT_STG_FORDEMO_01', 'Sample_Audio_file.mp3'),
+    {'timestamp_granularity': 'word'});
+
+
+//To identify the speaker//
+SELECT AI_TRANSCRIBE(TO_FILE('@INT_STG_FORDEMO_01', 'Sample_Audio_file.mp3'),
+    {'timestamp_granularity': 'speaker'});
+    
+
+SELECT AI_TRANSCRIBE(TO_FILE('@INT_STG_FORDEMO_01', 'consultation_5_mix_es_en.wav'),
+    {'timestamp_granularity': 'speaker'});
+
+
+
+//To do the sentiment analytics //
+WITH transcriptions AS
+    ( SELECT TO_VARCHAR (AI_TRANSCRIBE(TO_FILE('@INT_STG_FORDEMO_01',
+        'Sample_Audio_file.mp3'))) AS transcribed_call )
+SELECT
+    AI_SENTIMENT(transcribed_call, ['Professionalism', 'Resolution',
+        'Wait Time']) AS call_sentiment
+FROM transcriptions;
+
+
+
+
+
+// To build the understanding of the TO_FILE function and FILE data type in Snowflake //
+
+-- To list the files which are present in the internal stage.
+LIST @DEMO_DB.DEMO_SCHEMA.INT_STG_FORDEMO_01;
+
+--To get the metadata details of the file.
+SELECT TO_FILE(BUILD_STAGE_FILE_URL('@int_stg_fordemo_01', 'Image_Iphone.png'));
+
+/*
+{
+  "CONTENT_TYPE": "image/png",
+  "ETAG": "6005b0d72e9168b89c544c6c81ebbf54",
+  "LAST_MODIFIED": "Fri, 15 Aug 2025 14:07:43 GMT",
+  "RELATIVE_PATH": "Image_Iphone.png",
+  "SIZE": 266473,
+  "STAGE": "@DEMO_DB.DEMO_SCHEMA.INT_STG_FORDEMO_01"
+}
+*/
+
+
+SELECT TO_FILE(file_url) FROM DIRECTORY(@int_stg_fordemo_01);
+
+/*
+The output is same as above
+*/
+
+
+
+--Creating the table.
+CREATE OR REPLACE TABLE 
+new_demo_unstruct_table(unstruct_col FILE);
+
+--Inserting the data to the table.
+INSERT INTO new_demo_unstruct_table
+    SELECT TO_FILE(file_url) FROM DIRECTORY(@int_stg_fordemo_01);
+
+--Selecting the data from the table.
+SELECT * FROM new_demo_unstruct_table;
+
+
+
+
+int_stg_fordemo_01/Image_Iphone.png
+
+
+--Creating an internal stage.
+CREATE OR REPLACE STAGE NEW_INTSTG_FORFILE 
+	DIRECTORY = ( ENABLE = true ) 
+	COMMENT = 'dir table';
+
+    
+--The o/p1
+SELECT * FROM DIRECTORY( @NEW_INTSTG_FORFILE );
+
+--The o/p2
+SELECT TO_FILE(file_url) FROM DIRECTORY(@NEW_INTSTG_FORFILE);
+
+
+--Creating the table.
+CREATE OR REPLACE TABLE 
+new_demo_unstruct_table(unstruct_col FILE);
+
+--Inserting the data to the table.
+INSERT INTO new_demo_unstruct_table
+    SELECT TO_FILE(file_url) FROM DIRECTORY(@NEW_INTSTG_FORFILE);
+
+--Selecting the data from the table.
+SELECT * FROM new_demo_unstruct_table;
+
