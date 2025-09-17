@@ -1,0 +1,234 @@
+
+//// USE CASE : 1
+USE DATABASE DEMO_DB;
+USE SCHEMA DEMO_DB.DEMO_SCHEMA;
+
+CREATE TABLE customer_complaints (
+    serial_no INT,
+    email_body TEXT
+);
+
+
+
+INSERT INTO customer_complaints (serial_no, email_body) VALUES
+(1, 'Hi team, my name is Alice Williams. I ordered a 55-inch UltraHD TV (Order ID: TV-45821) from your online store. The TV was delivered on September 2nd, 2025 but it does not power on and shows a blank screen. I would like a replacement.'),
+(2, 'Hello Support, this is Bob Smith. I purchased a leather recliner chair (Order ID: LC-12345) last week. One of the legs was missing and the protective packaging was torn. Please send me the missing part or issue a refund.'),
+(3, 'Dear Customer Care, my name is Carol Johnson. I bought a stainless steel refrigerator (Order ID: RF-55555) as a gift for my parents. Unfortunately it is making loud noises and not cooling properly. I want a full refund.'),
+(4, 'Hi there, this is David Lee. I recently ordered a microwave oven (Order ID: MW-78910). The product arrived late and the outer box was damaged. Kindly replace it with a new one as soon as possible.'),
+(5, 'Good afternoon, this is Emma Davis. I ordered a set of wireless headphones (Order ID: WH-33221). The sound quality is distorted and the battery drains within 30 minutes. Please arrange a replacement.'),
+(6, 'Hello, my name is Frank Miller. I purchased a wooden dining table (Order ID: DT-76432). The table arrived with scratches on the surface and two chairs were missing. I request either a replacement or partial refund.'),
+(7, 'Dear Support, this is Grace Taylor. I ordered a washing machine (Order ID: WM-99887). The machine leaks water during the wash cycle. Please send a technician or arrange for a replacement unit.'),
+(8, 'Hi, this is Henry Wilson. I recently bought a smartphone (Order ID: SP-44556). The screen freezes frequently and apps crash unexpectedly. Kindly process a warranty replacement.'),
+(9, 'Hello team, my name is Irene Brown. I ordered a set of ceramic dinner plates (Order ID: CP-22114). Two of the plates arrived broken. Please send replacements for the damaged items.'),
+(10, 'Dear Customer Service, this is James Anderson. I purchased an air conditioner (Order ID: AC-67390). It is not cooling properly even after installation. I would like a service visit or a refund.');
+
+
+
+SELECT * FROM customer_complaints;
+
+SELECT
+    serial_no,
+    AI_EXTRACT(
+        text => email_body,
+        responseFormat => PARSE_JSON('{
+            "customer_name": "What is the customer name?",
+            "order_id": "Extract the order id",
+            "product": "Which product is mentioned?",
+            "issue_summary": "Summarize the issue in one short sentence",
+            "requested_action": "Is the customer asking for a refund or a replacement?"
+        }')
+    ) AS extracted_json
+FROM customer_complaints;
+
+
+
+CREATE OR REPLACE TABLE customer_complaints_structured (
+    serial_no INT,
+    customer_name STRING,
+    order_id STRING,
+    product STRING,
+    issue_summary STRING,
+    requested_action STRING
+);
+
+
+
+INSERT INTO customer_complaints_structured
+SELECT
+    serial_no,
+    extracted_json:"response":"customer_name"::STRING AS customer_name,
+    extracted_json:"response":"order_id"::STRING AS order_id,
+    extracted_json:"response":"product"::STRING AS product,
+    extracted_json:"response":"issue_summary"::STRING AS issue_summary,
+    extracted_json:"response":"requested_action"::STRING AS requested_action
+FROM (
+    SELECT
+        serial_no,
+        AI_EXTRACT(
+            text => email_body,
+            responseFormat => PARSE_JSON('{
+                "customer_name": "What is the customer name?",
+                "order_id": "Extract the order id",
+                "product": "Which product is mentioned?",
+                "issue_summary": "Summarize the issue in one short sentence",
+                "requested_action": "Is the customer asking for a refund or a replacement?"
+            }')
+        ) AS extracted_json
+    FROM customer_complaints
+);
+
+SELECT * FROM customer_complaints_structured;
+
+
+SELECT
+    customer_name,
+    product,
+    snowflake.cortex.sentiment(issue_summary) as review_sentiment
+FROM customer_complaints_structured;
+
+
+SELECT
+    customer_name,
+    product,
+    snowflake.cortex.ai_sentiment(issue_summary) as review_sentiment
+FROM customer_complaints_structured;
+
+
+select * from customer_complaints_structured;
+
+
+
+
+
+//// USE CASE : 2
+
+LIST @DEMO_DB.DEMO_SCHEMA.INT_STAGE_DEMO_AIEXTRACT;
+
+
+SELECT AI_EXTRACT(
+  file => TO_FILE('@DEMO_DB.DEMO_SCHEMA.INT_STAGE_DEMO_AIEXTRACT', relative_path),
+  responseFormat => [
+    'What is this document?',
+    'How would you classify this document?'
+  ]
+) FROM DIRECTORY (@DEMO_DB.DEMO_SCHEMA.INT_STAGE_DEMO_AIEXTRACT);
+
+
+
+SELECT
+        AI_EXTRACT(
+            file => TO_FILE('@int_stage_demo_aiextract', 'Customer_Complaint_Letter_1.pdf'),
+            responseFormat => PARSE_JSON('{
+                "customer_name": "Extract the customer name (given or full name)",
+                "product": "Which product is referenced?",
+                "issues": "What issues were reported?",
+                "requested_action": "What is the customer asking for (refund, replacement, repair, status)?"
+            }')
+        ) AS j;
+
+
+
+SELECT
+        AI_EXTRACT(
+            file => TO_FILE('@int_stage_demo_aiextract', 'Customer_Complaint_Letter_2.pdf'),
+            responseFormat => PARSE_JSON('{
+                "customer_name": "Extract the customer name (given or full name)",
+                "product": "Which product is referenced?",
+                "issues": "What issues were reported?",
+                "requested_action": "What is the customer asking for (refund, replacement, repair, status)?"
+            }')
+        ) AS j;
+
+
+
+SELECT
+        AI_EXTRACT(
+            file => TO_FILE('@DEMO_DB.DEMO_SCHEMA.INT_STAGE_DEMO_AIEXTRACT', relative_path),
+            responseFormat => PARSE_JSON('{
+                "customer_name": "Extract the customer name (given or full name)",
+                "product": "Which product is referenced?",
+                "issues": "What issues were reported?",
+                "requested_action": "What is the customer asking for (refund, replacement, repair, status)?"
+            }')
+        ) AS j
+FROM DIRECTORY (@DEMO_DB.DEMO_SCHEMA.INT_STAGE_DEMO_AIEXTRACT);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        
+
+
+
+
+
+        
+
+
+
+            int_stage_demo_aiextract/Customer_Complaint_Letter_1.pdf
+            
+
+            
+SELECT AI_EXTRACT(
+    file => TO_FILE('@customer_emails','customer_email.pdf'),
+    responseFormat => PARSE_JSON('{
+        "customer_name": "Extract the customer''s name",
+        "order_id": "Extract the order id",
+        "issues": "What are the issues reported by the customer?",
+        "requested_action": "Is the customer asking for a refund, replacement, or status?",
+        "product": "Which product is referenced?"
+    }')
+) AS extracted_json;
+
+
+
+
+
+
+
+CREATE OR REPLACE TABLE CUSTOMER_EMAIL_INSIGHTS AS
+WITH files AS (
+    SELECT relative_path
+    FROM DIRECTORY(@customer_emails)  -- lists all files in the stage
+),
+ext AS (
+    SELECT
+        relative_path,
+        AI_EXTRACT(
+            file => TO_FILE('@customer_emails', relative_path),
+            responseFormat => PARSE_JSON('{
+                "customer_name": "Extract the customer name (given or full name)",
+                "product": "Which product is referenced?",
+                "issues": "What issues were reported?",
+                "requested_action": "What is the customer asking for (refund, replacement, repair, status)?"
+            }')
+        ) AS j
+    FROM files
+)
+SELECT
+    relative_path                       AS file_path,
+    j:"response":"customer_name"::string AS customer_name,
+    j:"response":"product"::string       AS product,
+    j:"response":"issues"::string        AS issue,
+    j:"response":"requested_action"::string AS requested_action
+FROM ext
+ORDER BY file_path;
+
+
+
+
+
+
