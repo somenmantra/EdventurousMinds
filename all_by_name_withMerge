@@ -1,0 +1,141 @@
+The code for this video is given below:
+"ALL BY NAME" usage in "MERGE" statements.
+
+-- Create Target Table
+CREATE OR REPLACE TABLE customer_master (
+    customer_id INT,
+    customer_name STRING,
+    city STRING,
+    loyalty_points INT
+);
+
+-- Create Source Table
+CREATE OR REPLACE TABLE customer_staging (
+    customer_id INT,
+    customer_name STRING,
+    city STRING,
+    loyalty_points INT
+);
+
+-- Insert sample data
+INSERT INTO customer_master VALUES
+(1, 'Alice', 'New York', 120),
+(2, 'Bob', 'Chicago', 200);
+
+INSERT INTO customer_staging VALUES
+(2, 'Bob', 'Los Angeles', 250),   -- Updated city and points
+(3, 'Charlie', 'Houston', 100);   -- New record
+
+
+select * from customer_master;
+
+-- The traditional method:
+MERGE INTO customer_master AS T
+USING customer_staging AS S
+ON T.customer_id = S.customer_id
+WHEN MATCHED THEN
+    UPDATE SET
+        customer_name = S.customer_name,
+        city = S.city,
+        loyalty_points = S.loyalty_points
+WHEN NOT MATCHED THEN
+    INSERT (customer_id, customer_name, city, loyalty_points)
+    VALUES (S.customer_id, S.customer_name, S.city, S.loyalty_points);
+
+
+SELECT * FROM customer_master;
+delete from customer_master;
+
+
+
+
+
+
+
+
+-- The new method:
+-- Create Target and Source Tables with identical columns
+CREATE OR REPLACE TABLE customer_master_all (
+    customer_id INT,
+    customer_name STRING,
+    city STRING,
+    loyalty_points INT
+);
+
+CREATE OR REPLACE TABLE customer_staging_all (
+    customer_id INT,
+    customer_name STRING,
+    city STRING,
+    loyalty_points INT
+);
+
+-- Insert sample data
+INSERT INTO customer_master_all VALUES
+(1, 'Alice', 'New York', 120),
+(2, 'Bob', 'Chicago', 200);
+
+INSERT INTO customer_staging_all VALUES
+(2, 'Bob', 'Los Angeles', 250),
+(3, 'Charlie', 'Houston', 100);
+
+select * from customer_master_all;
+
+MERGE INTO customer_master_all
+USING customer_staging_all
+ON customer_master_all.customer_id = customer_staging_all.customer_id
+WHEN MATCHED THEN
+    UPDATE ALL BY NAME
+WHEN NOT MATCHED THEN
+    INSERT ALL BY NAME;
+
+
+SELECT * FROM customer_master_all;
+
+
+
+    
+
+
+
+
+-- Additional Scenario:
+
+-- Source table (columns in a different order intentionally)
+CREATE OR REPLACE TABLE customer_staging_all_new (
+    loyalty_points INT,
+    city STRING,
+    customer_id INT,
+    customer_name STRING
+);
+
+
+CREATE OR REPLACE TABLE customer_staging_all (
+    customer_id INT,
+    customer_name STRING,
+    city STRING,
+    loyalty_points INT
+);
+
+
+
+-- Source Table Data (notice column order is different)
+INSERT INTO customer_staging_all_new VALUES
+(250, 'Los Angeles', 2, 'Bob'),  -- Update Bob
+(100, 'Houston', 3, 'Charlie');  -- New record
+
+
+
+MERGE INTO customer_master_all
+USING customer_staging_all_new
+ON customer_master_all.customer_id = customer_staging_all_new.customer_id
+WHEN MATCHED THEN
+    UPDATE ALL BY NAME
+WHEN NOT MATCHED THEN
+    INSERT ALL BY NAME;
+
+
+SELECT * FROM customer_master_all;
+    
+
+
+
