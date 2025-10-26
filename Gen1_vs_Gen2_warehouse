@@ -1,0 +1,80 @@
+CREATE OR REPLACE WAREHOUSE demo_snow_gen2_wh                ---By default it would create an X-Small warehouse.
+  RESOURCE_CONSTRAINT = 'STANDARD_GEN_2';
+
+SHOW WAREHOUSES;
+
+CREATE OR REPLACE WAREHOUSE demo_snow_gen2_wh               --This would change the x-small suze to Medium.
+  WAREHOUSE_SIZE = MEDIUM
+  RESOURCE_CONSTRAINT = STANDARD_GEN_2;
+
+
+
+ALTER WAREHOUSE demo_snow_gen1_wh SUSPEND;                                  ---To change the Gen-1 to Gen-2 warehouse.
+ALTER WAREHOUSE demo_snow_gen1_wh SET RESOURCE_CONSTRAINT = STANDARD_GEN_2;
+ALTER WAREHOUSE demo_snow_gen1_wh RESUME;
+
+
+--GEN2 warehouse
+CREATE OR REPLACE WAREHOUSE demo_snow_gen2_wh_001
+  WAREHOUSE_SIZE = 'LARGE'
+  RESOURCE_CONSTRAINT = STANDARD_GEN_2;
+
+
+CREATE OR REPLACE WAREHOUSE demo_snow_gen1_wh_001
+  WAREHOUSE_SIZE = 'LARGE';
+
+
+ALTER SESSION SET use_cached_result = false;
+SHOW WAREHOUSES;
+
+USE SCHEMA snowflake_sample_data.tpcds_sf10Tcl;
+
+
+--- Query 1
+ALTER SESSION SET use_cached_result = false;
+ALTER WAREHOUSE demo_snow_gen1_wh_001 SUSPEND;
+
+USE WAREHOUSE demo_snow_gen1_wh_001;
+
+SELECT 
+    dt.d_year AS sales_year,
+    st.s_state AS store_state,
+    SUM(sales.ss_sales_price) AS total_sales_amount
+FROM SNOWFLAKE_SAMPLE_DATA.TPCDS_SF10TCL.STORE_SALES AS sales
+INNER JOIN SNOWFLAKE_SAMPLE_DATA.TPCDS_SF10TCL.DATE_DIM AS dt
+    ON sales.ss_sold_date_sk = dt.d_date_sk
+INNER JOIN SNOWFLAKE_SAMPLE_DATA.TPCDS_SF10TCL.STORE AS st
+    ON sales.ss_store_sk = st.s_store_sk
+WHERE dt.d_year BETWEEN 2001 AND 2003
+GROUP BY 
+    dt.d_year, 
+    st.s_state
+ORDER BY 
+    dt.d_year, 
+    st.s_state;
+
+
+--- This is for Gen-2 warehouse.
+ALTER SESSION SET use_cached_result = false;
+ALTER WAREHOUSE demo_snow_gen2_wh_001 SUSPEND;
+
+
+USE WAREHOUSE demo_snow_gen2_wh_001;
+
+SELECT 
+    dt.d_year AS sales_year,
+    st.s_state AS store_state,
+    SUM(sales.ss_sales_price) AS total_sales_amount
+FROM SNOWFLAKE_SAMPLE_DATA.TPCDS_SF10TCL.STORE_SALES AS sales
+INNER JOIN SNOWFLAKE_SAMPLE_DATA.TPCDS_SF10TCL.DATE_DIM AS dt
+    ON sales.ss_sold_date_sk = dt.d_date_sk
+INNER JOIN SNOWFLAKE_SAMPLE_DATA.TPCDS_SF10TCL.STORE AS st
+    ON sales.ss_store_sk = st.s_store_sk
+WHERE dt.d_year BETWEEN 2001 AND 2003
+GROUP BY 
+    dt.d_year, 
+    st.s_state
+ORDER BY 
+    dt.d_year, 
+    st.s_state;
+
