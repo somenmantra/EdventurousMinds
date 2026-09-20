@@ -1,0 +1,569 @@
+name: ORDERS_ANALYTICS
+description: "This semantic view supports e-commerce sales and revenue analytics. It models transactions at the order and order-line level across four core entities: orders, customers, products, and line items. It enables consistent reporting of gross revenue, net revenue, profit, customer segmentation, and product performance. IMPORTANT: Gross revenue is the subtotal before any discounts are applied. Net revenue is the subtotal minus discounts (does NOT include tax or shipping). Total amount is the final customer-facing charge including tax and shipping. These three concepts are distinct and must not be confused."
+tables:
+  - name: ORDERS
+    base_table:
+      database: DEMO_DB_001
+      schema: SCHEMA_TEST_001
+      table: ORDERS
+    description: "Represents individual customer purchase orders. Grain: one row per order. Each order captures the financial breakdown including subtotal (gross revenue), discounts, tax, shipping, and total amount charged. This is the primary fact table for revenue analysis and links to Customers for segmentation analysis."
+    synonyms:
+      - purchases
+      - transactions
+      - sales
+      - sales orders
+    primary_key:
+      columns:
+        - ORDER_ID
+    foreign_keys:
+      - fkey_columns:
+          - CUSTOMER_ID
+        pkey_table:
+          database: DEMO_DB_001
+          schema: SCHEMA_TEST_001
+          table: CUSTOMERS
+        pkey_columns:
+          - CUSTOMER_ID
+    dimensions:
+      - name: ORDER_ID
+        expr: ORDER_ID
+        data_type: NUMBER
+        description: "Unique identifier for each order. Used as the primary key for order-level analysis."
+      - name: CUSTOMER_ID
+        expr: CUSTOMER_ID
+        data_type: NUMBER
+        description: "Foreign key linking to the Customers table. Identifies which customer placed the order."
+      - name: ORDER_STATUS
+        expr: ORDER_STATUS
+        data_type: VARCHAR
+        description: Current fulfillment status of the order. Values include Completed, Pending, Shipped, Cancelled, and Returned. Use this to filter for completed orders when calculating confirmed revenue.
+        synonyms:
+          - status
+          - fulfillment status
+      - name: PAYMENT_METHOD
+        expr: PAYMENT_METHOD
+        data_type: VARCHAR
+        description: "Payment instrument used for the order. Values include Credit Card, PayPal, Debit Card, and Bank Transfer."
+        synonyms:
+          - payment type
+          - how they paid
+      - name: SHIPPING_METHOD
+        expr: SHIPPING_METHOD
+        data_type: VARCHAR
+        description: "Delivery speed selected for the order. Values include Standard, Express, and Next Day."
+        synonyms:
+          - delivery method
+          - shipping speed
+          - delivery type
+      - name: SHIPPING_CITY
+        expr: SHIPPING_CITY
+        data_type: VARCHAR
+        description: "City where the order was shipped to."
+        synonyms:
+          - destination city
+          - delivery city
+      - name: SHIPPING_STATE
+        expr: SHIPPING_STATE
+        data_type: VARCHAR
+        description: "US state where the order was shipped to."
+        synonyms:
+          - destination state
+          - delivery state
+          - region
+    time_dimensions:
+      - name: ORDER_DATE
+        expr: ORDER_DATE
+        data_type: DATE
+        description: Date when the order was placed. This is the primary time reference for all revenue reporting and trend analysis. Use this for monthly, quarterly, and yearly revenue breakdowns.
+        synonyms:
+          - purchase date
+          - sale date
+          - transaction date
+      - name: DELIVERY_DATE
+        expr: DELIVERY_DATE
+        data_type: DATE
+        description: "Date when the order was delivered to the customer. NULL if not yet delivered."
+        synonyms:
+          - received date
+          - arrival date
+      - name: CREATED_AT
+        expr: CREATED_AT
+        data_type: TIMESTAMP_NTZ
+        description: "System timestamp when the order record was created."
+    facts:
+      - name: SUBTOTAL
+        expr: SUBTOTAL
+        data_type: NUMBER
+        description: The pre-discount order amount, also known as gross revenue. This is the sum of line item prices BEFORE any discounts are applied. Does NOT include tax or shipping. Use this when reporting gross revenue or comparing revenue before and after discounts.
+        synonyms:
+          - gross revenue
+          - gross sales
+          - pre-discount amount
+          - revenue before discounts
+      - name: DISCOUNT_AMOUNT
+        expr: DISCOUNT_AMOUNT
+        data_type: NUMBER
+        description: Total discount applied to the order in dollars. This is the amount deducted from the subtotal. The difference between gross revenue and net revenue is the discount amount.
+        synonyms:
+          - discount
+          - discount value
+          - savings
+          - promotion amount
+      - name: TAX_AMOUNT
+        expr: TAX_AMOUNT
+        data_type: NUMBER
+        description: "Sales tax charged on the order. Applied after discounts."
+        synonyms:
+          - tax
+          - sales tax
+      - name: SHIPPING_COST
+        expr: SHIPPING_COST
+        data_type: NUMBER
+        description: "Shipping and handling fee charged for the order delivery."
+        synonyms:
+          - shipping fee
+          - delivery cost
+          - shipping charge
+          - freight
+      - name: TOTAL_AMOUNT
+        expr: TOTAL_AMOUNT
+        data_type: NUMBER
+        description: "The final amount charged to the customer. Calculated as: subtotal - discount + tax + shipping. This is NOT the same as revenue. For revenue reporting, use gross revenue (SUBTOTAL) or net revenue (SUBTOTAL - DISCOUNT_AMOUNT). Total amount includes non-revenue components like tax and shipping."
+        synonyms:
+          - order total
+          - final charge
+          - amount charged
+          - total charge
+    metrics:
+      - name: GROSS_REVENUE
+        expr: SUM(SUBTOTAL)
+        description: Total gross revenue from orders. Calculated as the sum of all order subtotals before discounts. This represents the full catalog-price value of goods sold. Filter by ORDER_STATUS = 'Completed' for confirmed revenue only.
+        synonyms:
+          - total sales
+      - name: NET_REVENUE
+        expr: SUM(SUBTOTAL - DISCOUNT_AMOUNT)
+        description: Total net revenue from orders. Calculated as gross revenue minus all discounts. This is the actual revenue earned from product sales, excluding tax and shipping. This is the standard revenue metric for financial reporting. Net revenue = Gross revenue - Discounts.
+        synonyms:
+          - revenue after discounts
+          - total revenue
+      - name: TOTAL_DISCOUNT
+        expr: SUM(DISCOUNT_AMOUNT)
+        description: Total discount dollars given across orders. Useful for measuring promotional effectiveness and the gap between gross and net revenue.
+        synonyms:
+          - total discounts
+          - discount given
+          - promotion cost
+      - name: ORDER_COUNT
+        expr: COUNT(DISTINCT ORDER_ID)
+        description: "Total number of unique orders."
+        synonyms:
+          - number of orders
+          - total orders
+          - order volume
+          - number of purchases
+          - number of transactions
+      - name: AVERAGE_ORDER_VALUE
+        expr: AVG(SUBTOTAL - DISCOUNT_AMOUNT)
+        description: Average net revenue per order. Calculated as net revenue divided by order count. A key e-commerce performance metric.
+        synonyms:
+          - AOV
+          - avg order size
+          - average basket size
+          - average purchase value
+  - name: CUSTOMERS
+    base_table:
+      database: DEMO_DB_001
+      schema: SCHEMA_TEST_001
+      table: CUSTOMERS
+    description: "Represents unique customers. Grain: one row per customer. Contains demographic, segmentation, and loyalty attributes used for customer performance, lifetime value, and cohort analysis."
+    synonyms:
+      - buyers
+      - shoppers
+      - clients
+      - users
+      - members
+    primary_key:
+      columns:
+        - CUSTOMER_ID
+    dimensions:
+      - name: CUSTOMER_ID
+        expr: CUSTOMER_ID
+        data_type: NUMBER
+        description: "Unique identifier for each customer. Primary key for customer-level analysis."
+      - name: FIRST_NAME
+        expr: FIRST_NAME
+        data_type: VARCHAR
+        description: "Customer's first name."
+      - name: LAST_NAME
+        expr: LAST_NAME
+        data_type: VARCHAR
+        description: "Customer's last name."
+      - name: EMAIL
+        expr: EMAIL
+        data_type: VARCHAR
+        description: "Customer's email address."
+      - name: PHONE
+        expr: PHONE
+        data_type: VARCHAR
+        description: "Customer's phone number."
+      - name: GENDER
+        expr: GENDER
+        data_type: VARCHAR
+        description: "Customer's gender. Values include Male and Female."
+      - name: CUSTOMER_SEGMENT
+        expr: CUSTOMER_SEGMENT
+        data_type: VARCHAR
+        description: Business classification of the customer. Values include Premium, Regular, and New. Used to segment revenue and customer performance reporting.
+        synonyms:
+          - segment
+          - customer type
+          - customer category
+          - tier
+      - name: LOYALTY_TIER
+        expr: LOYALTY_TIER
+        data_type: VARCHAR
+        description: Customer loyalty program tier. Values include Gold, Silver, Bronze, and Platinum. Determines discount eligibility and reward benefits.
+        synonyms:
+          - loyalty level
+          - membership tier
+          - loyalty status
+          - reward tier
+      - name: CITY
+        expr: CITY
+        data_type: VARCHAR
+        description: "Customer's home city."
+      - name: STATE
+        expr: STATE
+        data_type: VARCHAR
+        description: "Customer's home state."
+        synonyms:
+          - region
+          - location
+      - name: COUNTRY
+        expr: COUNTRY
+        data_type: VARCHAR
+        description: "Customer's country. Defaults to United States."
+      - name: POSTAL_CODE
+        expr: POSTAL_CODE
+        data_type: VARCHAR
+        description: "Customer's postal or ZIP code."
+        synonyms:
+          - zip code
+          - zip
+      - name: IS_ACTIVE
+        expr: IS_ACTIVE
+        data_type: BOOLEAN
+        description: "Whether the customer account is currently active. TRUE means active, FALSE means deactivated."
+        synonyms:
+          - active status
+          - is active customer
+    time_dimensions:
+      - name: DATE_OF_BIRTH
+        expr: DATE_OF_BIRTH
+        data_type: DATE
+        description: "Customer's date of birth. Used for age-based demographic analysis."
+        synonyms:
+          - birthday
+          - DOB
+      - name: REGISTRATION_DATE
+        expr: REGISTRATION_DATE
+        data_type: DATE
+        description: "Date when the customer registered their account. Used for cohort analysis."
+        synonyms:
+          - signup date
+          - join date
+          - enrollment date
+    facts:
+      - name: LIFETIME_VALUE
+        expr: LIFETIME_VALUE
+        data_type: NUMBER
+        description: Total historical spend by the customer across all orders. Represents the cumulative revenue contribution of the customer. Reported in USD.
+        synonyms:
+          - LTV
+          - CLV
+          - customer lifetime value
+          - total spend
+    metrics:
+      - name: CUSTOMER_COUNT
+        expr: COUNT(DISTINCT CUSTOMER_ID)
+        description: "Total number of unique customers."
+        synonyms:
+          - number of customers
+          - total customers
+          - how many customers
+          - how many buyers
+      - name: AVG_LIFETIME_VALUE
+        expr: AVG(LIFETIME_VALUE)
+        description: "Average lifetime value across customers. Useful for benchmarking customer segments."
+        synonyms:
+          - average LTV
+          - average CLV
+          - mean lifetime value
+  - name: ORDER_ITEMS
+    base_table:
+      database: DEMO_DB_001
+      schema: SCHEMA_TEST_001
+      table: ORDER_ITEMS
+    description: "Represents individual line items within orders. Grain: one row per product per order. This is the most granular transaction table, linking orders to specific products with quantities, unit prices, and line-level discounts."
+    synonyms:
+      - line items
+      - order lines
+      - order details
+      - items ordered
+      - purchased items
+    primary_key:
+      columns:
+        - ORDER_ITEM_ID
+    foreign_keys:
+      - fkey_columns:
+          - ORDER_ID
+        pkey_table:
+          database: DEMO_DB_001
+          schema: SCHEMA_TEST_001
+          table: ORDERS
+        pkey_columns:
+          - ORDER_ID
+      - fkey_columns:
+          - PRODUCT_ID
+        pkey_table:
+          database: DEMO_DB_001
+          schema: SCHEMA_TEST_001
+          table: PRODUCTS
+        pkey_columns:
+          - PRODUCT_ID
+    dimensions:
+      - name: ORDER_ITEM_ID
+        expr: ORDER_ITEM_ID
+        data_type: NUMBER
+        description: "Unique identifier for each line item."
+      - name: ORDER_ID
+        expr: ORDER_ID
+        data_type: NUMBER
+        description: "Foreign key to the Orders table."
+      - name: PRODUCT_ID
+        expr: PRODUCT_ID
+        data_type: NUMBER
+        description: "Foreign key to the Products table."
+      - name: QUANTITY
+        expr: QUANTITY
+        data_type: NUMBER
+        description: "Number of units of the product purchased in this line item."
+        synonyms:
+          - qty
+          - units
+          - items
+          - units purchased
+    facts:
+      - name: UNIT_PRICE
+        expr: UNIT_PRICE
+        data_type: NUMBER
+        description: "Price per unit of the product at the time of purchase."
+      - name: DISCOUNT_PCT
+        expr: DISCOUNT_PCT
+        data_type: NUMBER
+        description: "Percentage discount applied to this line item. 0 means no discount."
+        synonyms:
+          - discount percentage
+          - discount rate
+          - percent off
+      - name: LINE_TOTAL
+        expr: LINE_TOTAL
+        data_type: NUMBER
+        description: Total revenue for this line item after applying the line-level discount. Calculated as quantity * unit_price * (1 - discount_pct/100).
+        synonyms:
+          - line revenue
+          - item total
+          - line amount
+    metrics:
+      - name: UNITS_SOLD
+        expr: SUM(QUANTITY)
+        description: "Total units sold across all line items."
+        synonyms:
+          - total quantity
+          - items sold
+          - volume
+          - total units
+      - name: LINE_ITEM_REVENUE
+        expr: SUM(LINE_TOTAL)
+        description: "Total revenue from line items after line-level discounts."
+        synonyms:
+          - product revenue
+          - item revenue
+          - line sales
+  - name: PRODUCTS
+    base_table:
+      database: DEMO_DB_001
+      schema: SCHEMA_TEST_001
+      table: PRODUCTS
+    description: "Represents the product catalog. Grain: one row per product. Contains pricing, cost, categorization, and availability data. Used for product performance analysis, profitability calculations, and inventory status."
+    synonyms:
+      - items
+      - merchandise
+      - goods
+      - catalog
+      - product catalog
+    primary_key:
+      columns:
+        - PRODUCT_ID
+    dimensions:
+      - name: PRODUCT_ID
+        expr: PRODUCT_ID
+        data_type: NUMBER
+        description: "Unique identifier for each product."
+      - name: PRODUCT_NAME
+        expr: PRODUCT_NAME
+        data_type: VARCHAR
+        description: "Display name of the product."
+        synonyms:
+          - item name
+          - product
+          - name
+      - name: CATEGORY
+        expr: CATEGORY
+        data_type: VARCHAR
+        description: Top-level product category. Values include Electronics, Clothing, Home & Kitchen, and Sports & Outdoors.
+        synonyms:
+          - product category
+          - department
+          - product type
+      - name: SUB_CATEGORY
+        expr: SUB_CATEGORY
+        data_type: VARCHAR
+        description: "Detailed product sub-category within the main category."
+        synonyms:
+          - subcategory
+          - product subcategory
+      - name: BRAND
+        expr: BRAND
+        data_type: VARCHAR
+        description: "Manufacturer or brand name of the product."
+        synonyms:
+          - manufacturer
+          - make
+      - name: STOCK_QUANTITY
+        expr: STOCK_QUANTITY
+        data_type: NUMBER
+        description: "Current number of units available in inventory."
+        synonyms:
+          - inventory
+          - stock
+          - available units
+          - in stock
+      - name: IS_AVAILABLE
+        expr: IS_AVAILABLE
+        data_type: BOOLEAN
+        description: "Whether the product is currently available for purchase."
+    facts:
+      - name: UNIT_PRICE
+        expr: UNIT_PRICE
+        data_type: NUMBER
+        description: "Current retail selling price per unit."
+        synonyms:
+          - price
+          - selling price
+          - retail price
+      - name: COST_PRICE
+        expr: COST_PRICE
+        data_type: NUMBER
+        description: "Wholesale cost per unit. Used to calculate profit margins."
+        synonyms:
+          - cost
+          - wholesale price
+          - COGS per unit
+      - name: RATING
+        expr: RATING
+        data_type: NUMBER
+        description: "Average customer rating on a scale of 1.0 to 5.0."
+        synonyms:
+          - customer rating
+          - stars
+          - review score
+    metrics:
+      - name: AVG_PRODUCT_RATING
+        expr: AVG(RATING)
+        description: "Average customer rating across products."
+        synonyms:
+          - average rating
+          - mean rating
+      - name: PRODUCT_COUNT
+        expr: COUNT(DISTINCT PRODUCT_ID)
+        description: "Number of unique products."
+        synonyms:
+          - number of products
+          - total products
+          - catalog size
+relationships:
+  - name: ORDERS_TO_CUSTOMERS
+    left_table: ORDERS
+    right_table: CUSTOMERS
+    join_type: inner
+    relationship_type: many_to_one
+    relationship_columns:
+      - left_column: CUSTOMER_ID
+        right_column: CUSTOMER_ID
+  - name: ORDER_ITEMS_TO_ORDERS
+    left_table: ORDER_ITEMS
+    right_table: ORDERS
+    join_type: inner
+    relationship_type: many_to_one
+    relationship_columns:
+      - left_column: ORDER_ID
+        right_column: ORDER_ID
+  - name: ORDER_ITEMS_TO_PRODUCTS
+    left_table: ORDER_ITEMS
+    right_table: PRODUCTS
+    join_type: inner
+    relationship_type: many_to_one
+    relationship_columns:
+      - left_column: PRODUCT_ID
+        right_column: PRODUCT_ID
+verified_queries:
+  - name: gross_revenue_total
+    question: What is the total gross revenue?
+    sql: SELECT SUM(SUBTOTAL) AS gross_revenue FROM orders WHERE ORDER_STATUS = 'Completed'
+    verified_at: 1789825775
+    verified_by: Semantic Model Generator
+  - name: net_revenue_total
+    question: What is the total net revenue?
+    sql: SELECT SUM(SUBTOTAL - DISCOUNT_AMOUNT) AS net_revenue FROM orders WHERE ORDER_STATUS = 'Completed'
+    verified_at: 1789825775
+    verified_by: Semantic Model Generator
+  - name: revenue_by_customer_segment
+    question: What is the revenue breakdown by customer segment?
+    sql: |-
+      SELECT c.CUSTOMER_SEGMENT,
+             COUNT(DISTINCT o.ORDER_ID) AS total_orders,
+             SUM(o.SUBTOTAL) AS gross_revenue,
+             SUM(o.SUBTOTAL - o.DISCOUNT_AMOUNT) AS net_revenue
+      FROM orders AS o JOIN customers AS c ON o.CUSTOMER_ID = c.CUSTOMER_ID WHERE o.ORDER_STATUS = 'Completed' GROUP BY c.CUSTOMER_SEGMENT ORDER BY net_revenue DESC
+    verified_at: 1789825775
+    verified_by: Semantic Model Generator
+  - name: profit_by_category
+    question: What is the profit by product category?
+    sql: |-
+      SELECT p.CATEGORY,
+             SUM(oi.QUANTITY) AS units_sold,
+             SUM(oi.LINE_TOTAL) AS sales,
+             SUM(oi.QUANTITY * p.COST_PRICE) AS cost_of_goods,
+             SUM(oi.LINE_TOTAL) - SUM(oi.QUANTITY * p.COST_PRICE) AS profit
+      FROM order_items AS oi JOIN products AS p ON oi.PRODUCT_ID = p.PRODUCT_ID GROUP BY p.CATEGORY ORDER BY profit DESC
+    verified_at: 1789825775
+    verified_by: Semantic Model Generator
+  - name: loyalty_tier_analysis
+    question: How many customers are in each loyalty tier and what is their average lifetime value?
+    sql: |-
+      SELECT c.LOYALTY_TIER,
+             COUNT(DISTINCT c.CUSTOMER_ID) AS customer_count,
+             AVG(c.LIFETIME_VALUE) AS avg_lifetime_value
+      FROM customers AS c WHERE c.IS_ACTIVE = TRUE GROUP BY c.LOYALTY_TIER ORDER BY avg_lifetime_value DESC
+    verified_at: 1789825775
+    verified_by: Semantic Model Generator
+  - name: top_10_products
+    question: What are the top 10 best selling products?
+    sql: |-
+      SELECT p.PRODUCT_NAME, p.CATEGORY,
+             SUM(oi.QUANTITY) AS units_sold,
+             SUM(oi.LINE_TOTAL) AS total_sales
+      FROM order_items AS oi JOIN products AS p ON oi.PRODUCT_ID = p.PRODUCT_ID GROUP BY p.PRODUCT_NAME, p.CATEGORY ORDER BY total_sales DESC LIMIT 10
+    verified_at: 1789825775
+    verified_by: Semantic Model Generator
