@@ -1,0 +1,194 @@
+-- =============================================================
+-- NEW DMFs to attach to DEMO_DB_001.SCHEMA_TEST_001.DMF_TEST_DATA
+-- =============================================================
+
+-- 11. SALARY must not be negative
+ALTER TABLE DEMO_DB_001.SCHEMA_TEST_001.DMF_TEST_DATA
+  ADD DATA METRIC FUNCTION SNOWFLAKE.CORE.NEGATIVE_COUNT ON (SALARY);
+
+-- 12. BONUS must not be negative
+ALTER TABLE DEMO_DB_001.SCHEMA_TEST_001.DMF_TEST_DATA
+  ADD DATA METRIC FUNCTION SNOWFLAKE.CORE.NEGATIVE_COUNT ON (BONUS);
+
+-- 13. SALARY must not be zero
+ALTER TABLE DEMO_DB_001.SCHEMA_TEST_001.DMF_TEST_DATA
+  ADD DATA METRIC FUNCTION SNOWFLAKE.CORE.ZERO_COUNT ON (SALARY);
+
+-- 14. Catch leading/trailing whitespace in EMPLOYEE_NAME
+ALTER TABLE DEMO_DB_001.SCHEMA_TEST_001.DMF_TEST_DATA
+  ADD DATA METRIC FUNCTION SNOWFLAKE.CORE.UNTRIMMED_STRING_COUNT ON (EMPLOYEE_NAME);
+
+-- 15. Catch leading/trailing whitespace in EMAIL
+ALTER TABLE DEMO_DB_001.SCHEMA_TEST_001.DMF_TEST_DATA
+  ADD DATA METRIC FUNCTION SNOWFLAKE.CORE.UNTRIMMED_STRING_COUNT ON (EMAIL);
+
+-- 16. Track EMAIL string length (spot truncation or garbage)
+ALTER TABLE DEMO_DB_001.SCHEMA_TEST_001.DMF_TEST_DATA
+  ADD DATA METRIC FUNCTION SNOWFLAKE.CORE.STRING_LENGTH_MIN ON (EMAIL);
+
+-- 17. Validate STATUS has only accepted values
+ALTER TABLE DEMO_DB_001.SCHEMA_TEST_001.DMF_TEST_DATA
+  ADD DATA METRIC FUNCTION SNOWFLAKE.CORE.ACCEPTED_VALUES ON (STATUS)
+  USING (STATUS IN ('Active', 'Inactive', 'On Leave'));
+
+-- 18. Validate REGION has only accepted values
+ALTER TABLE DEMO_DB_001.SCHEMA_TEST_001.DMF_TEST_DATA
+  ADD DATA METRIC FUNCTION SNOWFLAKE.CORE.ACCEPTED_VALUES ON (REGION)
+  USING (REGION IN ('East', 'West', 'North', 'South', 'Central'));
+
+-- 19. Monitor SALARY median for drift detection
+ALTER TABLE DEMO_DB_001.SCHEMA_TEST_001.DMF_TEST_DATA
+  ADD DATA METRIC FUNCTION SNOWFLAKE.CORE.MEDIAN ON (SALARY);
+
+-- 20. Monitor SALARY standard deviation for anomaly detection
+ALTER TABLE DEMO_DB_001.SCHEMA_TEST_001.DMF_TEST_DATA
+  ADD DATA METRIC FUNCTION SNOWFLAKE.CORE.STDDEV ON (SALARY);
+
+
+
+
+-- =============================================================
+-- DMF EXPECTATIONS for DEMO_DB_001.SCHEMA_TEST_001.DMF_TEST_DATA
+-- =============================================================
+
+-- 1. ID must never be NULL (primary key)
+ALTER TABLE DEMO_DB_001.SCHEMA_TEST_001.DMF_TEST_DATA
+  MODIFY DATA METRIC FUNCTION SNOWFLAKE.CORE.NULL_COUNT ON (ID)
+    ADD EXPECTATION no_nulls_in_id (VALUE <= 10);
+
+-- 2. ID must have no duplicates (primary key uniqueness)
+ALTER TABLE DEMO_DB_001.SCHEMA_TEST_001.DMF_TEST_DATA
+  MODIFY DATA METRIC FUNCTION SNOWFLAKE.CORE.DUPLICATE_COUNT ON (ID)
+    ADD EXPECTATION no_duplicates_in_id (VALUE = 0);
+
+-- 3. EMPLOYEE_NAME must never be NULL
+ALTER TABLE DEMO_DB_001.SCHEMA_TEST_001.DMF_TEST_DATA
+  MODIFY DATA METRIC FUNCTION SNOWFLAKE.CORE.NULL_COUNT ON (EMPLOYEE_NAME)
+    ADD EXPECTATION no_nulls_in_employee_name (VALUE = 0);
+
+-- 4. SALARY allows up to 2 NULLs (matches current state)
+ALTER TABLE DEMO_DB_001.SCHEMA_TEST_001.DMF_TEST_DATA
+  MODIFY DATA METRIC FUNCTION SNOWFLAKE.CORE.NULL_COUNT ON (SALARY)
+    ADD EXPECTATION max_2_nulls_in_salary (VALUE <= 2);
+
+-- 5. HIRE_DATE allows up to 2 NULLs (matches current state)
+ALTER TABLE DEMO_DB_001.SCHEMA_TEST_001.DMF_TEST_DATA
+  MODIFY DATA METRIC FUNCTION SNOWFLAKE.CORE.NULL_COUNT ON (HIRE_DATE)
+    ADD EXPECTATION max_2_nulls_in_hire_date (VALUE <= 2);
+
+-- 6. EMAIL must not be blank
+ALTER TABLE DEMO_DB_001.SCHEMA_TEST_001.DMF_TEST_DATA
+  MODIFY DATA METRIC FUNCTION SNOWFLAKE.CORE.BLANK_COUNT ON (EMAIL)
+    ADD EXPECTATION no_blanks_in_email (VALUE = 0);
+
+-- 7. ROW_COUNT must stay at or above 10 rows
+ALTER TABLE DEMO_DB_001.SCHEMA_TEST_001.DMF_TEST_DATA
+  MODIFY DATA METRIC FUNCTION SNOWFLAKE.CORE.ROW_COUNT ON ()
+    ADD EXPECTATION min_row_count (VALUE >= 10);
+
+-- 8. Custom DMF: no invalid STATUS values
+ALTER TABLE DEMO_DB_001.SCHEMA_TEST_001.DMF_TEST_DATA
+  MODIFY DATA METRIC FUNCTION DEMO_DB_001.SCHEMA_TEST_001.INVALID_STATUS_COUNT ON (STATUS)
+    ADD EXPECTATION no_invalid_status (VALUE = 0);
+
+
+-- =============================================================
+-- ACCOUNT-LEVEL DMF METADATA QUERIES
+-- =============================================================
+
+-- ---------------------------------------------------------------
+-- A. DMF REFERENCES (CONFIG): Which DMFs are attached, to what,
+--    schedule, status, level (table vs schema), and column bindings
+-- ---------------------------------------------------------------
+
+-- A1. Per-table: all DMF associations for a specific table
+SELECT *
+FROM TABLE(
+    DEMO_DB_001.INFORMATION_SCHEMA.DATA_METRIC_FUNCTION_REFERENCES(
+        REF_ENTITY_NAME  => 'DEMO_DB_001.SCHEMA_TEST_001.DMF_TEST_DATA',
+        REF_ENTITY_DOMAIN => 'table'
+    )
+);
+
+
+
+-- A3. Account-level: all DMF references (ACCOUNT_USAGE, up to 3-hour latency)
+SELECT
+    REF_DATABASE_NAME,
+    REF_SCHEMA_NAME,
+    REF_ENTITY_NAME,
+    REF_ENTITY_DOMAIN,
+    METRIC_NAME,
+    SCHEDULE,
+    SCHEDULE_STATUS,
+    LEVEL,
+    EXCLUDE_TABLE_TYPES
+FROM SNOWFLAKE.ACCOUNT_USAGE.DATA_METRIC_FUNCTION_REFERENCES
+ORDER BY REF_DATABASE_NAME, REF_SCHEMA_NAME, REF_ENTITY_NAME, METRIC_NAME;
+
+
+-- ---------------------------------------------------------------
+-- B. DMF RESULTS (VALUES): Actual metric measurements per run
+-- ---------------------------------------------------------------
+
+-- B1. Per-table: latest metric values for a specific table
+SELECT
+    MEASUREMENT_TIME,
+    METRIC_NAME,
+    ARGUMENT_NAMES,
+    VALUE
+FROM TABLE(SNOWFLAKE.LOCAL.DATA_QUALITY_MONITORING_RESULTS(
+    REF_ENTITY_NAME  => 'DEMO_DB_001.SCHEMA_TEST_001.DMF_TEST_DATA',
+    REF_ENTITY_DOMAIN => 'table'
+))
+ORDER BY MEASUREMENT_TIME DESC;
+
+-- ---------------------------------------------------------------
+-- D. EXPECTATION DEFINITIONS (CONFIG): What thresholds are set
+-- ---------------------------------------------------------------
+
+-- D1. Per-table: expectation names and expressions
+SELECT *
+FROM TABLE(
+    DEMO_DB_001.INFORMATION_SCHEMA.DATA_METRIC_FUNCTION_EXPECTATIONS(
+        REF_ENTITY_NAME  => 'DEMO_DB_001.SCHEMA_TEST_001.DMF_TEST_DATA',
+        REF_ENTITY_DOMAIN => 'table'
+    )
+);
+
+-- D2. Account-level: all expectation definitions (ACCOUNT_USAGE, up to 3-hour latency)
+SELECT *
+FROM SNOWFLAKE.ACCOUNT_USAGE.DATA_METRIC_FUNCTION_EXPECTATIONS
+ORDER BY REF_DATABASE_NAME, REF_SCHEMA_NAME, REF_ENTITY_NAME;
+
+
+-- ---------------------------------------------------------------
+-- E. DMF CREDIT USAGE: Cost tracking for DMF evaluations
+-- ---------------------------------------------------------------
+
+-- E1. Daily DMF credit consumption
+SELECT
+    START_TIME::DATE AS USAGE_DATE,
+    SUM(CREDITS_USED) AS TOTAL_CREDITS
+FROM SNOWFLAKE.ACCOUNT_USAGE.DATA_QUALITY_MONITORING_USAGE_HISTORY
+GROUP BY USAGE_DATE
+ORDER BY USAGE_DATE DESC;
+
+
+
+SELECT * FROM SNOWFLAKE.ACCOUNT_USAGE.DATA_QUALITY_MONITORING_USAGE_HISTORY;
+
+-- ---------------------------------------------------------------
+-- F. LIST AVAILABLE DMFs: What system DMFs can you use
+-- ---------------------------------------------------------------
+
+-- F1. All system DMFs in SNOWFLAKE.CORE
+SHOW DATA METRIC FUNCTIONS IN SNOWFLAKE.CORE;
+
+SELECT "name"
+FROM TABLE(RESULT_SCAN(LAST_QUERY_ID()))
+GROUP BY 1;
+
+-- F2. All custom DMFs in a specific schema
+SHOW DATA METRIC FUNCTIONS IN SCHEMA DEMO_DB_001.SCHEMA_TEST_001;
+
