@@ -1,0 +1,337 @@
+
+-- ************************************************************
+-- SECTION 1 : CREATE A BASIC GEN-1 STANDARD WAREHOUSE
+-- ************************************************************
+-- When you don't specify any optional properties, Snowflake
+-- uses the following defaults for a Gen-1 standard warehouse:
+--
+--   WAREHOUSE_TYPE        = STANDARD
+--   WAREHOUSE_SIZE        = XSMALL
+--   GENERATION            = '2' (default in Gen2-available regions)
+--                           We explicitly set '1' for Gen-1
+--   MAX_CLUSTER_COUNT     = 1
+--   MIN_CLUSTER_COUNT     = 1
+--   SCALING_POLICY        = STANDARD
+--   AUTO_SUSPEND          = 600 (seconds = 10 minutes)
+--   AUTO_RESUME           = TRUE
+--   INITIALLY_SUSPENDED   = FALSE  (starts in running state)
+--   ENABLE_QUERY_ACCELERATION = FALSE
+--   QUERY_ACCELERATION_MAX_SCALE_FACTOR = 8
+--   MAX_CONCURRENCY_LEVEL = 8
+--   STATEMENT_QUEUED_TIMEOUT_IN_SECONDS = 0 (no limit)
+--   STATEMENT_TIMEOUT_IN_SECONDS        = 172800 (2 days)
+-- ************************************************************
+
+
+CREATE WAREHOUSE DEMO_TEST_EDVENTUROUS_001;
+SHOW WAREHOUSES;
+
+
+-- Simplest possible Gen-1 warehouse (XSMALL, all other defaults)
+CREATE OR REPLACE WAREHOUSE demo_basic_wh
+    WAREHOUSE_TYPE = STANDARD
+    GENERATION     = '1'
+    COMMENT        = 'Basic Gen-1 warehouse with all defaults';
+
+
+-- ************************************************************
+-- SECTION 2 : CREATE WITH ALL PARAMETERS EXPLICITLY SET
+-- ************************************************************
+-- This shows every configurable property so viewers can see
+-- the full list of knobs available.
+
+CREATE OR REPLACE WAREHOUSE demo_full_config_wh
+    WAREHOUSE_TYPE        = STANDARD        -- STANDARD | 'SNOWPARK-OPTIMIZED' | ADAPTIVE
+    WAREHOUSE_SIZE        = MEDIUM          -- XSMALL | SMALL | MEDIUM | LARGE | XLARGE
+                                            -- | XXLARGE | XXXLARGE | X4LARGE | X5LARGE | X6LARGE
+    GENERATION            = '1'             -- '1' = Gen-1, '2' = Gen-2
+    MAX_CLUSTER_COUNT     = 1               -- 1 = single-cluster (multi-cluster needs Enterprise+)
+    MIN_CLUSTER_COUNT     = 1               -- Must be <= MAX_CLUSTER_COUNT
+    SCALING_POLICY        = 'STANDARD'      -- STANDARD | ECONOMY  (multi-cluster only)
+    AUTO_SUSPEND          = 300             -- Seconds of inactivity before auto-suspend (300 = 5 min)
+    AUTO_RESUME           = TRUE            -- Auto-start when a query arrives
+    INITIALLY_SUSPENDED   = TRUE            -- Create in suspended state (saves credits)
+    RESOURCE_MONITOR      = NULL            -- No resource monitor assigned
+    ENABLE_QUERY_ACCELERATION  = FALSE      -- Query Acceleration Service (Enterprise+)
+    QUERY_ACCELERATION_MAX_SCALE_FACTOR = 8 -- Max scale factor for QAS (0-100)
+    COMMENT               = 'Fully configured Gen-1 demo warehouse';
+
+-- Session-level / object-level parameters
+ALTER WAREHOUSE demo_full_config_wh SET
+    MAX_CONCURRENCY_LEVEL                = 8       -- Max concurrent queries per cluster (1-30, default 8)
+    STATEMENT_QUEUED_TIMEOUT_IN_SECONDS  = 0       -- 0 = no timeout for queued statements
+    STATEMENT_TIMEOUT_IN_SECONDS         = 172800; -- Max running time per statement (default 172800 = 2 days)
+
+
+SHOW PARAMETERS IN WAREHOUSE demo_full_config_wh;
+
+-- ************************************************************
+-- SECTION 3 : WAREHOUSE SIZES & CREDIT CONSUMPTION (Gen-1)
+-- ************************************************************
+-- Each size doubles the compute resources AND credits/hour.
+--
+--   Size       | Credits/Hour | Credits/Second
+--   -----------+--------------+---------------
+--   X-Small    |     1        |  0.0003
+--   Small      |     2        |  0.0006
+--   Medium     |     4        |  0.0011
+--   Large      |     8        |  0.0022
+--   X-Large    |    16        |  0.0044
+--   2X-Large   |    32        |  0.0089
+--   3X-Large   |    64        |  0.0178
+--   4X-Large   |   128        |  0.0356
+--   5X-Large   |   256        |  0.0711
+--   6X-Large   |   512        |  0.1422
+--
+-- Billing is per-second with a 60-second minimum each time
+-- the warehouse starts.
+
+
+-- ************************************************************
+-- SECTION 4 : DIFFERENT SIZE WAREHOUSES FOR DIFFERENT WORKLOADS
+-- ************************************************************
+
+-- XSmall — lightweight queries, testing, development
+CREATE OR REPLACE WAREHOUSE demo_dev_wh
+    WAREHOUSE_SIZE    = XSMALL
+    GENERATION        = '1'
+    AUTO_SUSPEND      = 60          -- Suspend after 1 minute of inactivity
+    AUTO_RESUME       = TRUE
+    INITIALLY_SUSPENDED = TRUE
+    COMMENT           = 'Dev/test — 1 credit/hr';
+
+-- Large — dashboard queries, moderate analytics
+CREATE OR REPLACE WAREHOUSE demo_analytics_wh
+    WAREHOUSE_SIZE    = LARGE
+    GENERATION        = '1'
+    AUTO_SUSPEND      = 300
+    AUTO_RESUME       = TRUE
+    INITIALLY_SUSPENDED = TRUE
+    COMMENT           = 'Analytics — 8 credits/hr';
+
+-- XLarge — heavy ETL / data loading
+CREATE OR REPLACE WAREHOUSE demo_etl_wh
+    WAREHOUSE_SIZE    = XLARGE
+    GENERATION        = '1'
+    AUTO_SUSPEND      = 120         -- Suspend quickly after load completes
+    AUTO_RESUME       = TRUE
+    INITIALLY_SUSPENDED = TRUE
+    COMMENT           = 'ETL workloads — 16 credits/hr';
+
+
+-- ************************************************************
+-- SECTION 5 : MULTI-CLUSTER WAREHOUSE (Enterprise Edition+)
+-- ************************************************************
+-- Multi-cluster warehouses add more clusters (not bigger nodes)
+-- to handle concurrency spikes.
+
+CREATE OR REPLACE WAREHOUSE demo_multicluster_wh
+    WAREHOUSE_SIZE    = MEDIUM
+    GENERATION        = '1'
+    MAX_CLUSTER_COUNT = 3           -- Scale up to 3 clusters
+    MIN_CLUSTER_COUNT = 1           -- Scale down to 1 cluster
+    SCALING_POLICY    = 'STANDARD'  -- STANDARD = spin up fast, ECONOMY = pack clusters full first
+    AUTO_SUSPEND      = 300
+    AUTO_RESUME       = TRUE
+    INITIALLY_SUSPENDED = TRUE
+    COMMENT           = 'Multi-cluster: auto-scales 1-3 clusters';
+
+-- Maximized mode: MIN = MAX (always runs all clusters)
+CREATE OR REPLACE WAREHOUSE demo_maximized_wh
+    WAREHOUSE_SIZE    = SMALL
+    GENERATION        = '1'
+    MAX_CLUSTER_COUNT = 2
+    MIN_CLUSTER_COUNT = 2           -- Always 2 clusters running
+    AUTO_SUSPEND      = 600
+    AUTO_RESUME       = TRUE
+    INITIALLY_SUSPENDED = TRUE
+    COMMENT           = 'Maximized mode — always 2 clusters';
+
+
+-- ************************************************************
+-- SECTION 6 : AUTO-SUSPEND STRATEGIES
+-- ************************************************************
+-- AUTO_SUSPEND accepts seconds or NULL (never suspend).
+-- The background suspend process runs ~every 30 seconds,
+-- so the actual suspend may occur up to 30s after the timeout.
+
+-- Aggressive suspend — good for sporadic workloads
+CREATE OR REPLACE WAREHOUSE demo_aggressive_suspend_wh
+    WAREHOUSE_SIZE    = XSMALL
+    GENERATION        = '1'
+    AUTO_SUSPEND      = 60          -- 1 minute
+    AUTO_RESUME       = TRUE
+    INITIALLY_SUSPENDED = TRUE
+    COMMENT           = 'Aggressive auto-suspend (60s)';
+
+-- Never suspend — good for always-on dashboards
+CREATE OR REPLACE WAREHOUSE demo_always_on_wh
+    WAREHOUSE_SIZE    = XSMALL
+    GENERATION        = '1'
+    AUTO_SUSPEND      = NULL        -- Never auto-suspend
+    AUTO_RESUME       = TRUE
+    INITIALLY_SUSPENDED = TRUE
+    COMMENT           = 'Never auto-suspends';
+
+
+-- ************************************************************
+-- SECTION 7 : ALTER WAREHOUSE — RESIZE & CHANGE PROPERTIES
+-- ************************************************************
+
+-- Resume the dev warehouse first
+ALTER WAREHOUSE demo_dev_wh RESUME;
+
+-- Resize from XSMALL to MEDIUM (takes effect for next query)
+ALTER WAREHOUSE demo_dev_wh SET
+    WAREHOUSE_SIZE = MEDIUM;
+
+-- Change auto-suspend timeout
+ALTER WAREHOUSE demo_dev_wh SET
+    AUTO_SUSPEND = 180;
+
+-- Enable Query Acceleration Service (Enterprise Edition+)
+ALTER WAREHOUSE demo_dev_wh SET
+    ENABLE_QUERY_ACCELERATION = TRUE
+    QUERY_ACCELERATION_MAX_SCALE_FACTOR = 4;
+
+-- Disable Query Acceleration
+ALTER WAREHOUSE demo_dev_wh SET
+    ENABLE_QUERY_ACCELERATION = FALSE;
+
+-- Scale back down
+ALTER WAREHOUSE demo_dev_wh SET
+    WAREHOUSE_SIZE = XSMALL;
+
+
+-- ************************************************************
+-- SECTION 8 : SUSPEND, RESUME & ABORT QUERIES
+-- ************************************************************
+
+-- Suspend a warehouse manually
+ALTER WAREHOUSE demo_dev_wh SUSPEND;
+
+-- Resume a warehouse manually
+ALTER WAREHOUSE demo_dev_wh RESUME;
+
+-- Resume only if currently suspended (avoids errors)
+ALTER WAREHOUSE demo_dev_wh RESUME IF SUSPENDED;
+
+-- Abort all running queries on a warehouse
+ALTER WAREHOUSE demo_dev_wh ABORT ALL QUERIES;
+
+
+-- ************************************************************
+-- SECTION 9 : DESCRIBE & SHOW WAREHOUSES
+-- ************************************************************
+
+-- View all properties of a specific warehouse
+DESCRIBE WAREHOUSE demo_full_config_wh;
+
+-- List all warehouses in the account
+SHOW WAREHOUSES;
+
+-- Filter warehouses by name pattern
+SHOW WAREHOUSES LIKE 'demo_%';
+
+
+-- ************************************************************
+-- SECTION 10 : MONITORING — WAREHOUSE LOAD & HISTORY
+-- ************************************************************
+
+-- Current warehouse load (running vs queued queries)
+SELECT *
+FROM TABLE(INFORMATION_SCHEMA.WAREHOUSE_LOAD_HISTORY(
+    DATE_RANGE_START => DATEADD('hours', -1, CURRENT_TIMESTAMP()),
+    WAREHOUSE_NAME   => 'DEMO_ANALYTICS_WH'
+));
+
+-- Warehouse metering history (credit consumption)
+SELECT *
+FROM TABLE(INFORMATION_SCHEMA.WAREHOUSE_METERING_HISTORY(
+    DATE_RANGE_START => DATEADD('days', -7, CURRENT_DATE()),
+    DATE_RANGE_END   => CURRENT_DATE(),
+    WAREHOUSE_NAME   => 'DEMO_ANALYTICS_WH'
+));
+
+-- ACCOUNT_USAGE view — credit usage over past 30 days (up to 45-min latency)
+SELECT
+    WAREHOUSE_NAME,
+    SUM(CREDITS_USED)            AS total_credits,
+    SUM(CREDITS_USED_COMPUTE)    AS compute_credits,
+    SUM(CREDITS_USED_CLOUD_SERVICES) AS cloud_credits,
+    COUNT(*)                     AS metering_intervals
+FROM SNOWFLAKE.ACCOUNT_USAGE.WAREHOUSE_METERING_HISTORY
+WHERE START_TIME >= DATEADD('days', -30, CURRENT_DATE())
+GROUP BY WAREHOUSE_NAME
+ORDER BY total_credits DESC;
+
+
+-- ************************************************************
+-- SECTION 11 : CREATE OR ALTER (IDEMPOTENT CREATION)
+-- ************************************************************
+-- CREATE OR ALTER creates the warehouse if it doesn't exist,
+-- or alters it if it does — useful for infrastructure-as-code.
+
+CREATE OR ALTER WAREHOUSE demo_idempotent_wh
+    WAREHOUSE_TYPE    = STANDARD
+    WAREHOUSE_SIZE    = SMALL
+    GENERATION        = '1'
+    AUTO_SUSPEND      = 300
+    AUTO_RESUME       = TRUE
+    COMMENT           = 'Idempotent — safe to run repeatedly';
+
+
+-- ************************************************************
+-- SECTION 12 : RESOURCE MONITORS (COST GUARDRAILS)
+-- ************************************************************
+-- Resource monitors set credit limits and trigger actions
+-- (notify, suspend, kill) when thresholds are hit.
+
+CREATE OR REPLACE RESOURCE MONITOR demo_monitor
+    WITH
+        CREDIT_QUOTA = 100                -- 100 credits per interval
+        FREQUENCY    = MONTHLY            -- Reset every month
+        START_TIMESTAMP = IMMEDIATELY     -- Start tracking now
+    TRIGGERS
+        ON 75 PERCENT DO NOTIFY           -- Alert at 75%
+        ON 90 PERCENT DO SUSPEND          -- Suspend new queries at 90%
+        ON 100 PERCENT DO SUSPEND_IMMEDIATE; -- Kill running queries at 100%
+
+-- Assign the monitor to a warehouse
+ALTER WAREHOUSE demo_analytics_wh SET
+    RESOURCE_MONITOR = demo_monitor;
+
+
+-- ************************************************************
+-- SECTION 13 : WAREHOUSE ACCESS CONTROL
+-- ************************************************************
+-- Warehouses require USAGE or OPERATE privileges.
+--
+-- Key privileges:
+--   USAGE    — Use the warehouse to run queries
+--   OPERATE  — Start, stop, resize the warehouse
+--   MONITOR  — View warehouse activity and history
+--   MODIFY   — Change warehouse properties
+--   ALL      — All of the above + OWNERSHIP
+
+-- Grant query access to a role
+GRANT USAGE ON WAREHOUSE demo_analytics_wh TO ROLE PUBLIC;
+
+-- Grant operational control
+GRANT OPERATE ON WAREHOUSE demo_analytics_wh TO ROLE SYSADMIN;
+
+-- Grant monitoring access
+GRANT MONITOR ON WAREHOUSE demo_analytics_wh TO ROLE SYSADMIN;
+
+-- Revoke access
+REVOKE USAGE ON WAREHOUSE demo_analytics_wh FROM ROLE PUBLIC;
+
+
+-- ************************************************************
+-- SECTION 14 : SETTING A DEFAULT WAREHOUSE FOR A USER
+-- ************************************************************
+
+-- Set the default warehouse for a user
+-- (uncomment and replace 'MY_USER' with an actual username)
+-- ALTER USER MY_USER SET DEFAULT_WAREHOUSE = demo_dev_wh;
+
