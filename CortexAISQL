@@ -1,0 +1,260 @@
+/* =====================================================================
+   SNOWFLAKE AI SQL FUNCTIONS - END-TO-END DEMO
+   ---------------------------------------------------------------------
+   Run each STEP top-to-bottom. 
+   Role: ACCOUNTADMIN   Warehouse: COMPUTE_WH
+   Objects: AI_DEMO_DB.DEMO  (dropped in STEP 10)
+   ===================================================================== */
+
+
+/* =====================================================================
+   STEP 0 - SETUP
+   - AI SQL = LLMs callable as plain SQL functions. No Python, no APIs.
+   - Data never leaves Snowflake's security boundary.
+   - We build 2 small tables + 1 stage with a PDF and an image.
+   ===================================================================== */
+USE ROLE ACCOUNTADMIN;
+USE WAREHOUSE COMPUTE_WH;
+CREATE DATABASE IF NOT EXISTS AI_DEMO_DB;
+CREATE SCHEMA IF NOT EXISTS AI_DEMO_DB.DEMO;
+USE SCHEMA AI_DEMO_DB.DEMO;
+
+-- Stage for unstructured files (PDF, image, audio). Server-side encryption + directory are required for AI file functions.
+CREATE STAGE IF NOT EXISTS AI_DEMO_DB.DEMO.DOCS_STAGE
+  DIRECTORY = (ENABLE = TRUE) ENCRYPTION = (TYPE = 'SNOWFLAKE_SSE');
+-- Files used: invoice_1001.pdf, product.png (+ optional call.mp3 you upload via Snowsight > Data > Stage > + Files)
+LIST @AI_DEMO_DB.DEMO.DOCS_STAGE;
+
+-- Customer reviews (multilingual)
+CREATE OR REPLACE TABLE AI_DEMO_DB.DEMO.CUSTOMER_REVIEWS (
+  review_id INT, product VARCHAR, review_text VARCHAR);
+INSERT INTO AI_DEMO_DB.DEMO.CUSTOMER_REVIEWS VALUES
+ (1,'Travel Backpack','Absolutely love this backpack! Fits my laptop and the zippers feel super sturdy.'),
+ (2,'Travel Backpack','The strap broke after two weeks. Very disappointed with the quality for this price.'),
+ (3,'Travel Backpack','Der Rucksack ist bequem, aber die Lieferung hat zehn Tage gedauert.'),
+ (4,'Travel Backpack','Great value. Shipping was fast and customer service answered in minutes.'),
+ (5,'Travel Backpack','Color looks nothing like the photos. I want a refund.'),
+ (6,'Wireless Earbuds','Sound quality is amazing and battery lasts all day.'),
+ (7,'Wireless Earbuds','Left earbud stopped charging after a month. Support never replied to my emails.'),
+ (8,'Wireless Earbuds','Los auriculares son cómodos pero el precio es demasiado alto.'),
+ (9,'Wireless Earbuds','Pairing is instant and noise cancellation is better than my old pair.'),
+ (10,'Wireless Earbuds','Too expensive for what you get, and the case scratches easily.'),
+ (11,'Smart Watch','Fitness tracking is accurate and the screen is bright outdoors.'),
+ (12,'Smart Watch','La montre est élégante mais la batterie ne tient qu''une journée.'),
+ (13,'Smart Watch','App keeps crashing after the latest update. Unusable for workouts.'),
+ (14,'Smart Watch','Delivered a day early, beautifully packaged. Very happy.'),
+ (15,'Smart Watch','Charger cable arrived broken and the replacement took three weeks.');
+
+-- Support tickets (contain FAKE PII)
+CREATE OR REPLACE TABLE AI_DEMO_DB.DEMO.SUPPORT_TICKETS (
+  ticket_id INT, ticket_text VARCHAR);
+INSERT INTO AI_DEMO_DB.DEMO.SUPPORT_TICKETS VALUES
+ (101,'Hi, I am John Carter, I was charged twice on my card for order 5521. Email me at john.carter@example.com.'),
+ (102,'My earbuds will not pair with my iPhone after the firmware update. Call me at 415-555-0199. - Maria Lopez'),
+ (103,'Package for order 7781 shows delivered but I never got it. Address: 42 Elm Street, Austin TX.'),
+ (104,'I want to cancel my subscription and get a refund for this month. Account holder: Priya Shah.'),
+ (105,'The smart watch app crashes every time I open the heart rate screen. URGENT, I use it for medical reasons.'),
+ (106,'How do I change the shipping address on an order that has not shipped yet?'),
+ (107,'Your website rejects my credit card 4111 1111 1111 1111 at checkout, please help. - Tom Becker'),
+ (108,'Battery on my watch drains in 4 hours since yesterday. This is the second unit with this issue.');
+
+SELECT * FROM AI_DEMO_DB.DEMO.CUSTOMER_REVIEWS;
+
+SELECT * FROM AI_DEMO_DB.DEMO.SUPPORT_TICKETS;
+
+
+
+
+/* =====================================================================
+   STEP 1 - TEXT FUNCTIONS (row-level)
+   ===================================================================== */
+
+-- 1a. AI_COMPLETE : general-purpose LLM prompt (the "Swiss army knife")
+--   TALK: Any instruction, any model. Use when no task-specific function fits.
+SELECT review_text,
+       AI_COMPLETE('claude-haiku-4-5',
+         'Write a polite 1-sentence reply from customer support to this review: ' || review_text) AS suggested_reply
+FROM AI_DEMO_DB.DEMO.CUSTOMER_REVIEWS
+WHERE review_id IN (2,4,7);
+
+-- 1b. AI_CLASSIFY : put text into YOUR categories (no prompt engineering)
+--   TALK: Returns an object with labels. Supports descriptions and multi-label.
+SELECT ticket_id, ticket_text,
+       AI_CLASSIFY(ticket_text, ['Billing','Technical Issue','Shipping','Account / Cancellation','General Question']):labels[0]::STRING AS category
+FROM AI_DEMO_DB.DEMO.SUPPORT_TICKETS;
+
+-- 1b+. Multi-label + task description
+SELECT review_text,
+       AI_CLASSIFY(review_text, ['Quality','Price','Delivery','Customer Service','Product Features'],
+                   {'task_description':'Identify every topic the review mentions','output_mode':'multi'}):labels AS topics
+FROM AI_DEMO_DB.DEMO.CUSTOMER_REVIEWS;
+
+-- 1c. AI_FILTER : natural-language WHERE clause (returns TRUE/FALSE)
+--   TALK: "Semantic filtering" - works in WHERE and even in JOIN ... ON.
+SELECT review_id, product, review_text
+FROM AI_DEMO_DB.DEMO.CUSTOMER_REVIEWS
+WHERE AI_FILTER(PROMPT('Is the customer asking for a refund or complaining about a defect? {0}', review_text));
+
+-- 1d. AI_EXTRACT : pull structured fields out of free text
+SELECT ticket_id,
+       AI_EXTRACT(ticket_text, {
+         'order_number':'What is the order number?',
+         'customer_name':'What is the customer name?',
+         'product':'Which product is mentioned?'}):response AS extracted
+FROM AI_DEMO_DB.DEMO.SUPPORT_TICKETS;
+
+-- 1e. AI_SENTIMENT : overall + aspect-based sentiment
+--   TALK: Returns positive / negative / neutral / mixed per category. Works across languages.
+SELECT review_text,
+       AI_SENTIMENT(review_text, ['quality','price','delivery','customer service']) AS sentiment
+FROM AI_DEMO_DB.DEMO.CUSTOMER_REVIEWS;
+
+-- 1f. AI_TRANSLATE : translation ('' = auto-detect source language)
+SELECT review_text,
+       AI_TRANSLATE(review_text, '', 'en') AS english_text
+FROM AI_DEMO_DB.DEMO.CUSTOMER_REVIEWS
+WHERE review_id IN (3,8,12);
+
+
+/* =====================================================================
+   STEP 2 - AGGREGATE FUNCTIONS (many rows -> one insight)
+   TALK: Works like SUM()/COUNT() with GROUP BY, and scales beyond a model's context window.
+   ===================================================================== */
+
+-- 2a. AI_SUMMARIZE_AGG : general summary per group
+SELECT product, AI_SUMMARIZE_AGG(review_text) AS review_summary
+FROM AI_DEMO_DB.DEMO.CUSTOMER_REVIEWS
+GROUP BY product;
+
+-- 2b. AI_AGG : aggregate with YOUR instruction
+SELECT product,
+       AI_AGG(review_text, 'List the top 3 improvement requests from these reviews as short bullet points.') AS top_asks
+FROM AI_DEMO_DB.DEMO.CUSTOMER_REVIEWS
+GROUP BY product;
+
+
+/* =====================================================================
+   STEP 3 - SEMANTIC SEARCH: AI_EMBED + AI_SIMILARITY
+   TALK: Meaning-based matching, not keywords. Basis for RAG, dedup, recommendations.
+   ===================================================================== */
+
+-- 3a. AI_EMBED : store vectors
+CREATE OR REPLACE TABLE AI_DEMO_DB.DEMO.TICKET_EMBEDDINGS AS
+SELECT ticket_id, ticket_text, AI_EMBED('e5-base-v2', ticket_text) AS embedding
+FROM AI_DEMO_DB.DEMO.SUPPORT_TICKETS;
+
+-- Find tickets most similar to a new incoming ticket (vector math)
+SELECT ticket_id, ticket_text,
+       VECTOR_COSINE_SIMILARITY(embedding, AI_EMBED('e5-base-v2', 'My watch battery dies very quickly')) AS score
+FROM AI_DEMO_DB.DEMO.TICKET_EMBEDDINGS
+ORDER BY score DESC
+LIMIT 10;
+
+-- 3b. AI_SIMILARITY : one-liner similarity score, no vectors to manage
+SELECT ticket_id, ticket_text,
+       AI_SIMILARITY(ticket_text, 'I was billed incorrectly') AS score
+FROM AI_DEMO_DB.DEMO.SUPPORT_TICKETS
+ORDER BY score DESC
+LIMIT 3;
+
+
+/* =====================================================================
+   STEP 4 - DOCUMENTS, IMAGES, AUDIO (unstructured files on a stage)
+   ===================================================================== */
+
+-- 4a. AI_PARSE_DOCUMENT : OCR / LAYOUT (tables -> markdown)
+SELECT AI_PARSE_DOCUMENT(TO_FILE('@AI_DEMO_DB.DEMO.DOCS_STAGE','invoice_1001.pdf'), {'mode':'LAYOUT'}):content::STRING AS invoice_markdown;
+
+-- 4b. AI_EXTRACT on a file : invoice fields straight from the PDF
+SELECT AI_EXTRACT(
+         file => TO_FILE('@AI_DEMO_DB.DEMO.DOCS_STAGE','invoice_1001.pdf'),
+         responseFormat => {'invoice_number':'What is the invoice number?',
+                            'vendor':'Who is the vendor?',
+                            'total_due':'What is the total amount due?',
+                            'due_date':'What is the due date?'}):response AS invoice_fields;
+
+-- 4c. AI_COMPLETE with an image (multimodal)
+SELECT AI_COMPLETE('claude-sonnet-5',
+         'Describe this product in one sentence and suggest 3 catalog tags.',
+         TO_FILE('@AI_DEMO_DB.DEMO.DOCS_STAGE','product.png')) AS image_description;
+
+-- 4d. AI_TRANSCRIBE : audio/video -> text   (upload your own call.mp3 first)
+-- SELECT AI_TRANSCRIBE(TO_FILE('@AI_DEMO_DB.DEMO.DOCS_STAGE','call.mp3')):text::STRING AS transcript;
+-- Chain it:  AI_SENTIMENT( AI_TRANSCRIBE(...):text::STRING )
+
+
+/* =====================================================================
+   STEP 5 - PRIVACY & COST
+   ===================================================================== */
+
+-- 5a. AI_REDACT : mask PII before analytics / sharing
+SELECT ticket_text AS original, AI_REDACT(ticket_text) AS redacted
+FROM AI_DEMO_DB.DEMO.SUPPORT_TICKETS;
+
+-- 5b. AI_COUNT_TOKENS : estimate input tokens BEFORE a big batch run (output tokens bill on top)
+SELECT COUNT(*) AS rows_,
+       SUM(AI_COUNT_TOKENS('ai_complete', 'claude-haiku-4-5', review_text)) AS total_input_tokens
+FROM AI_DEMO_DB.DEMO.CUSTOMER_REVIEWS;
+
+
+/* =====================================================================
+   STEP 6 - CHOOSING LLM MODELS
+   TALK: Large = best reasoning (claude-opus-5, gemini-4-argon, openai-gpt-6-astra)
+         Medium = production default (claude-sonnet-5, openai-gpt-6.1-terra)
+         Small = high volume / cheap (claude-haiku-4-5, gemini-3.8-flash, openai-gpt-5.4-mini)
+         Start big for a quality baseline, then move down to the cheapest model that is good enough.
+   ===================================================================== */
+
+-- 6a. Same prompt, several models, side by side
+--   NOTE: the model argument must be a string literal (not a column), so we UNION ALL one SELECT per model.
+WITH r AS (
+  SELECT 'In max 12 words, what is the main complaint? ' || review_text AS p
+  FROM AI_DEMO_DB.DEMO.CUSTOMER_REVIEWS WHERE review_id = 7)
+SELECT 'claude-sonnet-5'     AS model, AI_COMPLETE('claude-sonnet-5', p)     AS answer FROM r UNION ALL
+SELECT 'claude-haiku-4-5',            AI_COMPLETE('claude-haiku-4-5', p)              FROM r UNION ALL
+SELECT 'openai-gpt-5.4-mini',         AI_COMPLETE('openai-gpt-5.4-mini', p)           FROM r UNION ALL
+SELECT 'gemini-3.8-flash',            AI_COMPLETE('gemini-3.8-flash', p)              FROM r;
+
+-- 6b. Model parameters (temperature / max_tokens)
+SELECT AI_COMPLETE(
+         model => 'claude-haiku-4-5',
+         prompt => 'Give a catchy 5-word slogan for a travel backpack.',
+         model_parameters => {'temperature': 0.9, 'max_tokens': 50}) AS slogan;
+
+-- 6c. Structured output: force JSON that matches a schema
+SELECT review_id,
+       AI_COMPLETE(
+         model => 'claude-haiku-4-5',
+         prompt => 'Analyze this review: ' || review_text,
+         response_format => {'type':'json','schema':{'type':'object','properties':{
+             'issue':{'type':'string'},
+             'urgency':{'type':'string','enum':['low','medium','high']},
+             'wants_refund':{'type':'boolean'}},
+           'required':['issue','urgency','wants_refund']}}) AS analysis
+FROM AI_DEMO_DB.DEMO.CUSTOMER_REVIEWS
+WHERE review_id IN (2,5,13);
+
+
+/* =====================================================================
+   STEP 7 - WHICH FUNCTION WHEN?  (decision guide)
+   ---------------------------------------------------------------------
+   Known categories ............... AI_CLASSIFY
+   Keep/drop rows by meaning ...... AI_FILTER
+   Specific fields / JSON ......... AI_EXTRACT  (or AI_COMPLETE + response_format)
+   PDFs / scans ................... AI_PARSE_DOCUMENT -> then other functions
+   Insight across many rows ....... AI_SUMMARIZE_AGG / AI_AGG
+   Emotion / opinion .............. AI_SENTIMENT
+   Search / dedupe / match ........ AI_EMBED + AI_SIMILARITY
+   Audio / video .................. AI_TRANSCRIBE
+   PII ............................ AI_REDACT
+   Anything else / creative ....... AI_COMPLETE
+   RULE: task-specific function first -> simpler SQL, cheaper, more consistent.
+   ===================================================================== */
+
+-- Proof: same task, two approaches. AI_CLASSIFY returns a clean label; AI_COMPLETE needs prompt work.
+SELECT ticket_text,
+       AI_CLASSIFY(ticket_text, ['Billing','Technical Issue','Shipping']):labels[0]::STRING AS via_classify,
+       AI_COMPLETE('claude-haiku-4-5', 'Categorize as Billing, Technical Issue or Shipping: ' || ticket_text) AS via_complete
+FROM AI_DEMO_DB.DEMO.SUPPORT_TICKETS
+LIMIT 3;
+
