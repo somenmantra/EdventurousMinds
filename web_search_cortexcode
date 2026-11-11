@@ -1,0 +1,43 @@
+SHOW PARAMETERS; -- ENABLE_CORTEX_WEBSEARCH
+SELECT CURRENT_ROLE();
+
+/*
+================================================================================
+ CoCo Demo: With vs. Without Web Search
+================================================================================
+ The idea: an AI model only knows what it learned during training. Its
+ knowledge stops at a fixed date (its "knowledge cutoff").
+ Web search lets CoCo (Cortex Code) look up current information on the
+ internet before it answers.
+
+ Key facts
+   - Off by default (ENABLE_CORTEX_WEBSEARCH = FALSE)
+   - Only ACCOUNTADMIN can turn it on
+   - Available in the US only
+   - Search queries leave Snowflake and go to Brave Search
+================================================================================
+*/
+
+------------------------------------------------------------------------------
+-- Step 1: Is web search on?
+------------------------------------------------------------------------------
+SHOW PARAMETERS LIKE 'ENABLE_CORTEX_WEBSEARCH' IN ACCOUNT;
+
+------------------------------------------------------------------------------
+-- Step 2: WITHOUT web search
+------------------------------------------------------------------------------
+SELECT q.question,
+       AI_COMPLETE('llama3.1-70b',
+         q.question || ' Answer in 2 sentences and state your knowledge cutoff.') AS answer_without_web
+FROM (SELECT column1 AS question FROM VALUES
+  ('What is the latest Snowflake news this week?'),
+  ('What is today''s date and a top tech headline today?'),
+  ('What is the latest released version of the pandas Python library?')) q;
+
+------------------------------------------------------------------------------
+-- Step 3: Turn on/off web search (ACCOUNTADMIN only)
+------------------------------------------------------------------------------
+USE ROLE ACCOUNTADMIN;
+
+ALTER ACCOUNT SET ENABLE_CORTEX_WEBSEARCH = TRUE;
+ALTER ACCOUNT SET ENABLE_CORTEX_WEBSEARCH = FALSE;
